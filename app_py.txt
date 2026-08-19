@@ -1,0 +1,92 @@
+"""
+Brand Intel — a tiny OSINT dashboard.
+
+Type a brand or topic. The app:
+  1) COLLECT  — pulls recent public headlines from Google News (free RSS, no key)
+  2) ANALYZE  — scores each headline's tone with a Hugging Face AI model
+  3) REPORT   — shows an overall read plus the most positive / negative items
+
+Runs as a web app via Gradio. Deployable free on a Hugging Face Space.
+"""
+
+import feedparser
+import gradio as gr
+from transformers import pipeline
+
+# ---- The AI brain ---------------------------------------------------------
+# A real Hugging Face model, downloaded automatically the first time it runs.
+# This one is trained to judge whether text is POSITIVE or NEGATIVE.
+# Loaded once at startup so every request is fast.
+sentiment = pipeline(
+    "sentiment-analysis",
+    model="distilbert-base-uncased-finetuned-sst-2-english",
+)
+
+
+def collect_headlines(query, limit=20):
+    """Step 1: gather public headlines about the query term."""
+    url = (
+        "https://news.google.com/rss/search?"
+        f"q={query.replace(' ', '+')}&hl=en-US&gl=US&ceid=US:en"
+    )
+    feed = feedparser.parse(url)
+    items = []
+    for entry in feed.entries[:limit]:
+        items.append({
+            "title": entry.title,
+            "source": entry.get("source", {}).get("title", ""),
+            "link": entry.link,
+        })
+    return items
+
+
+def analyze(query):
+    """Run the full pipeline and return a readable report."""
+    if not query.strip():
+        return "Type a brand or topic above, then press Analyze.", None
+
+    items = collect_headlines(query)
+    if not items:
+        return f"No public headlines found for '{query}'. Try another term.", None
+
+    # Step 2: score each headline. The model returns POSITIVE/NEGATIVE + confidence.
+    rows = []
+    total = 0.0
+    for it in items:
+        result = sentiment(it["title"])[0]
+        # Convert to a single -1..+1 number so we can average and sort.
+        signed = result["score"] if result["label"] == "POSITIVE" else -result["score"]
+        total += signed
+        rows.append([round(signed, 2), it["title"], it["source"]])
+
+    rows.sort(reverse=True)
+    avg = total / len(rows)
+    pos = sum(1 for r in rows if r[0] > 0.2)
+    neg = sum(1 for r in rows if r[0] < -0.2)
+    mood = "positive" if avg > 0.15 else "negative" if avg < -0.15 else "mixed"
+
+    # Step 3: the headline summary a human actually reads first.
+    summary = (
+        f"### {query}\n"
+        f"**Overall tone: {avg:+.2f} ({mood})** — "
+        f"{len(rows)} headlines, {pos} positive / {neg} negative.\n\n"
+        f"Most positive: *{rows[0][1]}*\n\n"
+        f"Most negative: *{rows[-1][1]}*"
+    )
+    return summary, rows
+
+
+with gr.Blocks(title="Brand Intel") as demo:
+    gr.Markdown("# 🛰️ Brand Intel\nPublic-headline sentiment scanner. "
+                "Type a brand, product, or topic.")
+    with gr.Row():
+        box = gr.Textbox(label="Brand or topic", placeholder="e.g. Stanley cup", scale=4)
+        btn = gr.Button("Analyze", variant="primary", scale=1)
+    report = gr.Markdown()
+    table = gr.Dataframe(headers=["Score", "Headline", "Source"], label="All headlines")
+
+    btn.click(analyze, inputs=box, outputs=[report, table])
+    box.submit(analyze, inputs=box, outputs=[report, table])
+
+if __name__ == "__main__":
+    demo.launch()
