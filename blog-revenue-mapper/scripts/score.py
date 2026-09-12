@@ -546,7 +546,7 @@ def main() -> None:
               f"above {min_sessions} sessions - has_product_link is unknown "
               f"for these, so they may be listed as candidates in error:")
         for handle in missing_signals:
-            print(f"          {handle}")
+            print(f"MISSING_HTML\t{handle}")
     if edited:
         touched = sum(rows[h]["sessions"] for h in edited)
         print()
