@@ -268,6 +268,55 @@ def collect_articles(config: dict, refresh: bool) -> None:
     rebuild_signals()
 
 
+SESSIONS_QUERY = (
+    "FROM sessions "
+    "SHOW sessions, sessions_with_cart_additions, "
+    "sessions_that_reached_checkout, sessions_that_completed_checkout "
+    "GROUP BY landing_page_path "
+    "SINCE -{days}d UNTIL today "
+    "ORDER BY sessions DESC LIMIT 1000"
+)
+
+
+def collect_sessions(config: dict, refresh: bool) -> None:
+    """Session funnel by landing page, straight from the store.
+
+    This is the 90-day backfill. The reports sheet only carries a trailing
+    28 days because that is the range the Apps Script asks for, not because
+    the history is missing. Pulling 90 days here surfaced 100 blog landing
+    pages against the 38 the 28-day GA export showed.
+
+    Shopify sessions and GA4 sessions are different measurement systems and
+    will not agree. Both windows are collected so like is compared with like.
+    """
+    import csv as _csv
+
+    for days, label in ((config["backfill"]["days"], "90d"), (28, "28d")):
+        path = os.path.join(DATA, "tabs", f"shopify_sessions_{label}.csv")
+        if os.path.exists(path) and not refresh:
+            print(f"sessions  cached ({label})")
+            continue
+        # Field names verified against the live schema: parseErrors is a
+        # plain [String!]! and the rows live in tableData.rows as JSON.
+        data = shopify_graphql(
+            "query Q($q: String!) { shopifyqlQuery(query: $q) { "
+            "__typename parseErrors "
+            "tableData { columns { name dataType } rows } } }",
+            {"q": SESSIONS_QUERY.format(days=days)},
+        )
+        block = data["shopifyqlQuery"]
+        if block.get("parseErrors"):
+            raise RuntimeError(f"ShopifyQL parse error: {block['parseErrors']}")
+        table = block.get("tableData") or {}
+        header = [c["name"] for c in table.get("columns", [])]
+        rows = table.get("rows") or []
+        with open(path, "w", newline="", encoding="utf-8") as fh:
+            writer = _csv.writer(fh)
+            writer.writerow(header)
+            writer.writerows(rows)
+        print(f"sessions  {label}: {len(rows)} rows")
+
+
 def rebuild_signals() -> None:
     """Derive the link signals from every cached article body."""
     folder = os.path.join(DATA, "articles")
@@ -288,6 +337,8 @@ def main() -> None:
                         help="where the sheet comes from (default: api)")
     parser.add_argument("--refresh", action="store_true", help="refetch instead of using the cache")
     parser.add_argument("--skip-products", action="store_true")
+    parser.add_argument("--skip-sessions", action="store_true",
+                        help="skip the ShopifyQL session backfill")
     parser.add_argument("--skip-articles", action="store_true")
     parser.add_argument("--signals-only", action="store_true",
                         help="re-derive article signals from cached HTML and exit")
@@ -306,6 +357,10 @@ def main() -> None:
         collect_products(config, args.refresh)
     else:
         print("products  skipped")
+    if not args.skip_sessions:
+        collect_sessions(config, args.refresh)
+    else:
+        print("sessions  skipped")
     if not args.skip_articles:
         collect_articles(config, args.refresh)
     else:

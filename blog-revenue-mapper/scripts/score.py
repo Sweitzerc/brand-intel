@@ -214,6 +214,16 @@ def build_rows(config: dict) -> Dict[str, object]:
             }
         )
 
+    # Shopify landing pages. The 90-day pull covers blog URLs that never
+    # appear in the 28-day GA export, so it seeds rows of its own rather than
+    # only decorating rows GA already found.
+    for window_label in ("90d", "28d"):
+        path = os.path.join(DATA, "tabs", f"shopify_sessions_{window_label}.csv")
+        for record in lib_sheet.read_tab(path):
+            handle = canonical(blog_handle_from(record.get("landing_page_path", ""), prefix))
+            if handle:
+                rows.setdefault(handle, {"handle": handle})
+
     # GSC page-level search performance.
     for record in pages:
         handle = canonical(blog_handle_from(record.get("page", ""), prefix))
