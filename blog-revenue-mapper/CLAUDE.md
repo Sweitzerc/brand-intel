@@ -108,12 +108,32 @@ The real fix is a one-line change to the Monday Apps Script: export the GSC
 query report with both the query and page dimensions. Until then, read
 `buying_intent_score` as a ranking aid, not a measurement.
 
-**Some posts already have blocks.** The two highest-traffic sizing guides
-already contain a `cg-shop-block` product module. `has_product_link` in the
-spec is too blunt, so the extractor reports four separate signals: the shop
-block marker, direct `/products/` links, `/collections/` links, and
-`/search?q=` links. A `/search?q=` link is **not** a product path; it drops
-the reader on a results page. Only the first three count.
+**Some posts already have blocks.** Seven of the 38 trafficked posts already
+contain a `cg-shop-block` product module. `has_product_link` in the spec is
+too blunt, so the extractor reports four separate signals: the shop block
+marker, direct `/products/` links, `/collections/` links, and `/search?q=`
+links. A `/search?q=` link is **not** a product path; it drops the reader on
+a results page.
+
+The candidate filter treats only a real product module as an existing path
+(`scoring.existing_path_signal: shop_block`). Posts whose only product path
+is a collection link buried in prose converted at 0.08% last window, so a
+link in prose is not a path.
+
+**Most of the blog was edited after the window closed. This is a trap.**
+The reporting window ends **2026-09-05**. 28 of the 38 scored posts, carrying
+**87% of blog traffic**, were edited on 2026-09-09 to 09-11, including every
+one of the seven that now has a block.
+
+So in any row of `candidates.csv`, the traffic half and the HTML half
+describe different versions of the page. Sessions and add-to-carts come from
+before the edit; `has_shop_block` and the link counts come from the live page
+today. **The add-to-cart figures on those posts say nothing about whether the
+blocks work — there is no post-block data yet.**
+
+`score.py` emits an `edited_after_window` column and prints a warning naming
+the affected posts. Do not remove either. Do not read a low ATC on a flagged
+row as evidence that its block failed.
 
 ---
 

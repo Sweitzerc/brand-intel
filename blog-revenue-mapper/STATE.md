@@ -44,16 +44,30 @@ That is the gap this project exists to close.
 
 ## What Phase 0 found
 
-1. **The premise holds.** 38 posts, ~4,550 sessions, 6 add-to-carts, no
-   revenue. Most have no path to a product at all.
+1. **The premise holds.** 38 posts, 4,552 sessions, 6 add-to-carts, no
+   revenue. The blog is 36.5% of landing sessions and converts to cart at
+   roughly a eighteenth of the site-wide rate.
 
-2. **Two posts already have blocks.** The top two sizing guides contain a
-   `cg-shop-block` module. They are excluded from `candidates.csv` by
-   default; re-run with `--all` to see them. Their combined 1,235 sessions
-   produced 2 add-to-carts, so the block alone is not sufficient — worth
-   understanding before inserting 30 more.
+2. **Seven posts already have blocks — added after the data was collected.**
+   Seven posts carry a `cg-shop-block` module, and 28 of the 38 scored posts
+   (87% of blog traffic) were edited on 2026-09-09 to 09-11. The window
+   closed 2026-09-05.
 
-3. **The sizing-guide cannibalisation is real and is worse than six URLs.**
+   This means **there is no post-block data at all yet**. The add-to-cart
+   figures on those posts describe the pages before the blocks existed. The
+   first read of this data — "blocks are in and they are not converting" —
+   is wrong, and the `edited_after_window` column exists to stop anyone
+   reaching it.
+
+   The upside: `out/baseline.json` is a clean pre-treatment baseline for
+   exactly those seven posts.
+
+3. **Existing "product paths" are mostly not paths.** 19 posts' only product
+   path is a collection link in prose. Those converted at 0.08%. One post
+   links only to `/search?q=`, which drops the reader on a results page.
+   The candidate filter therefore counts only a real product module.
+
+4. **The sizing-guide cannibalisation is real and is worse than six URLs.**
    At least six posts compete for the measuring/height cluster:
 
    | Sessions | Handle |
@@ -67,9 +81,8 @@ That is the gap this project exists to close.
 
    This is Phase 3 and it is now evidenced.
 
-4. **Several posts link only to `/search?q=`.** A site-search link is not a
-   path to a product. The extractor counts these separately and they do not
-   satisfy `has_product_link`.
+   Two of these already carry blocks, which makes consolidation more urgent,
+   not less: the 301s should point at whichever URL keeps its block.
 
 ---
 
@@ -107,5 +120,27 @@ inserted, so Phase 2 can be measured against them.
 
 ## Next action
 
-Read `out/candidates.csv`. Decide whether the top 10 are the right 10 before
-any code writes to the store.
+**Do not start Phase 1 by inserting more blocks. Wait for data first.**
+
+Seven posts covering 2,571 sessions were blocked days ago and have never been
+measured. A full 28-day window closes around **2026-10-07**. Re-run
+`collect.py --refresh` and `score.py` then and compare `blog_atc_rate_pct`
+against the 0.132% in `out/baseline.json`.
+
+That single comparison answers the question the whole project rests on, at a
+cost of one re-run. Building stages 3-5 first would mean inserting 30 more
+blocks of a design that has never been shown to work.
+
+In the meantime, two things are worth doing and neither writes to the store:
+
+1. **Add the page dimension to the GSC query export** in the Monday Apps
+   Script. It is one line and it turns `buying_intent_score` from an estimate
+   into a measurement.
+
+2. **Phase 3, the sizing-guide consolidation.** It does not depend on block
+   performance and the data to choose the canonical URL is in
+   `out/candidates.csv` now.
+
+If the October re-run shows the blocks moved ATC, build stages 3-5 and work
+down `candidates.csv`. If it did not, the block design is the problem and
+more of them will not help.
