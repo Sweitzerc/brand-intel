@@ -19,6 +19,37 @@ written to the store.** Stages 3-5 do not exist yet.
 
 ---
 
+## Backfill status
+
+The 28-day window was the Apps Script's date range, not a data limit.
+
+| Source | Window | State |
+|---|---|---|
+| Shopify sessions by landing page | 90d + 28d | **done**, via ShopifyQL in `collect.py` |
+| GSC query x page | 90d | **blocked on credentials** — `scripts/lib_gsc.py` is written and ready |
+| GA4 landing pages | 90d | not pulled; Shopify covers the same funnel |
+
+The Shopify backfill widened the picture a lot: **100 blog landing pages
+over 90 days against the 38 the 28-day GA export showed**, and 112 blog URLs
+now scored.
+
+`scripts/lib_gsc.py` needs the `canes-galore-scripts` service account added
+as a user on the Search Console property, then:
+
+    python3 scripts/lib_gsc.py --days 90 --out data/tabs/gsc_query_page.csv
+    python3 scripts/score.py --show
+
+Supermetrics has both Search Console and Analytics authenticated but the
+team's trial expired 2026-07-12, so that route is closed.
+
+**Until the GSC backfill runs, the intent column barely works.** Only 18 of
+68 candidates have enough attributed queries to score on their own data; the
+rest fall back to the site prior of 0.527 and the ranking is effectively
+traffic order. This is not a flaw in the intent model, it is starvation: 275
+queries over 28 days with no page dimension cannot cover 112 pages.
+
+---
+
 ## Last run
 
 - Reporting period: **2026-08-09 → 2026-09-05** (trailing 28 days, 3-day GSC lag)

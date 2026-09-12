@@ -66,6 +66,11 @@ def load_config() -> dict:
         return yaml.safe_load(fh)
 
 
+# Blog tag archives (/blogs/news/tagged/vintage) are listing pages, not
+# articles. They carry traffic but there is nothing to insert a block into.
+NON_ARTICLE_PREFIXES = ("tagged/",)
+
+
 def blog_handle_from(value: str, prefix: str) -> Optional[str]:
     """Pull the article handle out of a GA path or a GSC absolute URL.
 
@@ -78,7 +83,10 @@ def blog_handle_from(value: str, prefix: str) -> Optional[str]:
     path = parsed.path or ""
     if not path.startswith(prefix):
         return None
-    return path[len(prefix):].strip("/") or None
+    handle = path[len(prefix):].strip("/")
+    if not handle or handle.startswith(NON_ARTICLE_PREFIXES):
+        return None
+    return handle
 
 
 class HandleResolver:
@@ -102,12 +110,15 @@ class HandleResolver:
         if handle in self.exact:
             return handle
         matches = [h for h in self.handles if h.startswith(handle)]
+        # A truncated GA path can prefix-match several articles; a longer
+        # handle that no article starts with is simply gone from the store.
         if len(matches) == 1:
             return matches[0]
         if len(matches) > 1:
             self.ambiguous.append(handle)
             return None
-        self.unresolved.append(handle)
+        if handle not in self.unresolved:
+            self.unresolved.append(handle)
         return None
 
 
@@ -557,7 +568,8 @@ def main() -> None:
         print("      They are a clean pre-treatment baseline, not a measured result.")
         print()
     if resolver and resolver.unresolved:
-        print(f"WARNING {len(resolver.unresolved)} paths did not match any article handle")
+        print(f"WARNING {len(resolver.unresolved)} blog paths matched no article "
+              f"in the store (deleted or renamed): {resolver.unresolved[:5]}")
     if resolver and resolver.ambiguous:
         print(f"WARNING {len(resolver.ambiguous)} truncated paths matched more than one article")
 
