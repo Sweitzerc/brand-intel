@@ -10,6 +10,10 @@ articles. Three different things all look like "a product link":
   /search?q=...   A link to a site search. This is NOT a product path — it
                   drops the reader on a results page. Several articles are
                   full of these and would otherwise score as "already linked".
+  /collections    The bare collection INDEX, with no handle. Also not a
+                  product path: it is a list of lists. Counted separately as
+                  an index link so it is visible rather than silently
+                  dropped, which is what used to happen.
 
 So the extractor reports all four separately and `score.py` decides.
 """
@@ -80,9 +84,18 @@ def extract(handle: str, html: str) -> Dict:
     """Return the per-article signals that score.py consumes."""
     hrefs = [_path_of(h) for h in HREF_RE.findall(html)]
 
+    def _bare(path: str, root: str) -> bool:
+        """True for the index itself (/collections), not a member (/x/y)."""
+        stem = path.split("?")[0].rstrip("/")
+        return stem == root
+
     product_links = sorted({h for h in hrefs if h.startswith("/products/")})
     collection_links = sorted({h for h in hrefs if h.startswith("/collections/")})
     search_links = sorted({h for h in hrefs if h.startswith("/search")})
+    index_links = sorted({
+        h for h in hrefs
+        if _bare(h, "/collections") or _bare(h, "/products")
+    })
 
     body_only = COMMENT_RE.sub(" ", html)
     text = visible_text(body_only)
@@ -95,6 +108,8 @@ def extract(handle: str, html: str) -> Dict:
         "collection_links": collection_links,
         "collection_link_count": len(collection_links),
         "search_link_count": len(search_links),
+        "index_links": index_links,
+        "index_link_count": len(index_links),
         "paragraph_count": len(PARA_RE.findall(html)),
         "word_count": len(text.split()),
         "bytes": len(html),

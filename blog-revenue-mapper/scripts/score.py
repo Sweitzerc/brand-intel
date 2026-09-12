@@ -336,12 +336,14 @@ def build_rows(config: dict) -> Dict[str, object]:
         row["product_link_count"] = int(signal.get("product_link_count", 0))
         row["collection_link_count"] = int(signal.get("collection_link_count", 0))
         row["search_link_count"] = int(signal.get("search_link_count", 0))
+        row["index_link_count"] = int(signal.get("index_link_count", 0))
         row["paragraph_count"] = int(signal.get("paragraph_count", 0))
         row["word_count"] = int(signal.get("word_count", 0))
         row["signals_cached"] = handle in signals
 
-        # A link to /search?q= is not a path to a product; it is a path to a
-        # results page, and never counts.
+        # Neither a /search?q= link nor the bare /collections index is a path
+        # to a product: one is a results page, the other a list of lists.
+        # Only a shop block or a targeted product/collection link counts.
         row["has_product_link"] = bool(
             row["has_shop_block"]
             or row["product_link_count"] > 0
@@ -442,6 +444,7 @@ COLUMNS = [
     "has_product_link", "has_shop_block", "has_existing_path",
     "updated_at", "edited_after_window",
     "product_link_count", "collection_link_count", "search_link_count",
+    "index_link_count",
     "paragraph_count", "word_count", "is_published", "signals_cached",
     "top_queries",
 ]
@@ -482,6 +485,7 @@ def to_output(row: dict, rank: int) -> dict:
         "product_link_count": row["product_link_count"],
         "collection_link_count": row["collection_link_count"],
         "search_link_count": row["search_link_count"],
+        "index_link_count": row["index_link_count"],
         "paragraph_count": row["paragraph_count"],
         "word_count": row["word_count"],
         "is_published": row.get("is_published"),
