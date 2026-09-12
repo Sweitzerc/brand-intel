@@ -27,6 +27,9 @@ TAB_SIGNATURES: Dict[str, set] = {
     "gsc_queries": {"query", "clicks", "impressions", "position"},
     "gsc_pages": {"page", "clicks", "impressions", "position"},
     "scorecard": {"metric", "this_period", "prev_period"},
+    # Written by apps_script/gsc_query_page.gs. The only source that says
+    # which queries belong to which page.
+    "gsc_query_page": {"query", "page", "clicks", "impressions", "position"},
 }
 
 
@@ -74,9 +77,14 @@ def read_export(path: str) -> Dict[str, List[dict]]:
     out: Dict[str, List[dict]] = {}
     for rows in tables:
         cols = set(rows[0].keys())
-        for name, signature in TAB_SIGNATURES.items():
+        # Most specific signature first, so a query x page table is not
+        # claimed by the plain gsc_queries signature, which it contains.
+        for name, signature in sorted(
+            TAB_SIGNATURES.items(), key=lambda kv: -len(kv[1])
+        ):
             if name not in out and signature <= cols:
                 out[name] = rows
+                break
     return out
 
 
@@ -88,9 +96,10 @@ def read_api(sheet_id: str, tabs: Dict[str, str]) -> Dict[str, List[dict]]:
     key_path = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
     if not key_path:
         raise RuntimeError(
-            "GOOGLE_APPLICATION_CREDENTIALS is not set. Point it at the "
-            "canes-galore-scripts service account key, or run with "
-            "--source export."
+            "GOOGLE_APPLICATION_CREDENTIALS is not set. There is no known "
+            "service account key for this project - the Monday Apps Script "
+            "runs as the sheet owner over OAuth, not as a service account. "
+            "Use --source export with a saved spreadsheet export instead."
         )
     creds = service_account.Credentials.from_service_account_file(
         key_path,

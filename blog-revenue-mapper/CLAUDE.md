@@ -100,9 +100,12 @@ property has full history, so 90 days was always available.
 Two backfills exist, and `score.py` picks them up automatically when their
 files are present under `data/tabs/`:
 
-    scripts/lib_gsc.py   query x page straight from the Search Console API,
-                         any window. Needs the service account to be a user
-                         on the property.
+    apps_script/         query x page from inside the sheet, running as the
+      gsc_query_page.gs  sheet owner's own Google authorisation. PREFERRED.
+                         No key file, nothing to provision. Writes a
+                         GSC_Query_Page tab that collect.py picks up.
+    scripts/lib_gsc.py   the same pull locally, needing GSC_ACCESS_TOKEN or a
+                         service account key. Fallback only.
     ShopifyQL            sessions, cart additions, reached and completed
                          checkout by landing page over 90 days.
 
@@ -196,12 +199,39 @@ row as evidence that its block failed.
 ## Running Phase 0
 
     pip install -r requirements.txt
-    export GOOGLE_APPLICATION_CREDENTIALS=/path/to/canes-galore-scripts.json
     export SHOPIFY_STORE_DOMAIN=canes-galore.myshopify.com
     export SHOPIFY_ADMIN_TOKEN=...          # read-only
     python3 scripts/collect.py
     python3 scripts/score.py --show
 
-Without credentials, `--source export` parses a saved spreadsheet export from
-`data/raw/sheet_export.md` instead, and `--skip-products` runs without the
-Shopify token. Everything caches; `--refresh` refetches.
+`--source export` parses a saved spreadsheet export from
+`data/raw/sheet_export.md` instead of calling the Sheets API, and
+`--skip-products` runs without the Shopify token. Everything caches;
+`--refresh` refetches.
+
+## There is no service account
+
+The build spec refers to "the service account from the existing
+canes-galore-scripts GCP project". No such key exists on Chris's machine and
+none is known to have been provisioned. A **bound Apps Script runs as the
+user who owns the sheet**, over their own OAuth grant, which is how the
+Monday script reads and writes without any key.
+
+That account also owns the Search Console property, confirmed via the
+Supermetrics connection, which lists it as `galorebrandsusa@gmail.com` with
+the property id `https://www.canesgalore.com/`. So the Search Console pull
+belongs in Apps Script, next to the script that already runs.
+
+Do not add a `GOOGLE_APPLICATION_CREDENTIALS` requirement to anything new
+without checking that a key actually exists.
+
+## Check the property type before blaming permissions
+
+A URL-prefix property and a domain property are different strings:
+
+    https://www.canesgalore.com/        URL-prefix
+    sc-domain:canesgalore.com           domain
+
+Passing the wrong one returns 403, which is indistinguishable from a
+permissions failure. Both the Apps Script (`listSearchConsoleSites`) and
+`lib_gsc.py --list-sites` print the exact strings. Read it, do not guess.

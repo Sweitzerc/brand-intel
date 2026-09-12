@@ -37,21 +37,33 @@ def _session():
     if token:
         session = requests.Session()
         session.headers["Authorization"] = f"Bearer {token}"
+        session._identity = "GSC_ACCESS_TOKEN (bearer token)"  # type: ignore[attr-defined]
         return session
 
     key_path = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
     if not key_path:
         raise RuntimeError(
-            "Set GOOGLE_APPLICATION_CREDENTIALS to the canes-galore-scripts "
-            "service account key, or GSC_ACCESS_TOKEN to an OAuth token with "
-            f"{SCOPE}. The service account must be added as a user on the "
-            "Search Console property."
+            "No Search Console credentials. Set GSC_ACCESS_TOKEN to an OAuth "
+            f"token with {SCOPE}, or GOOGLE_APPLICATION_CREDENTIALS to a "
+            "service account key that has been added as a user on the "
+            "property. Easier: run apps_script/gsc_query_page.gs from the "
+            "sheet instead, which needs no credentials at all."
         )
     from google.auth.transport.requests import AuthorizedSession  # type: ignore
     from google.oauth2 import service_account  # type: ignore
 
     creds = service_account.Credentials.from_service_account_file(key_path, scopes=[SCOPE])
-    return AuthorizedSession(creds)
+    session = AuthorizedSession(creds)
+    session._identity = f"service account {creds.service_account_email}"  # type: ignore[attr-defined]
+    return session
+
+
+def list_sites() -> List[dict]:
+    """Every property this identity can read, with its exact siteUrl."""
+    session = _session()
+    response = session.get("https://searchconsole.googleapis.com/webmasters/v3/sites", timeout=60)
+    response.raise_for_status()
+    return response.json().get("siteEntry", [])
 
 
 def fetch(
@@ -67,6 +79,12 @@ def fetch(
     session = _session()
     url = ENDPOINT.format(site=quote(site, safe=""))
     dimensions = list(dimensions)
+    # Say who we are and what we are asking for BEFORE the request. A 403
+    # here is ambiguous between "wrong siteUrl string" and "this identity
+    # cannot read the property", and the body does not distinguish them.
+    print(f"authenticating as     {getattr(session, '_identity', 'unknown')}")
+    print(f"siteUrl               {site}")
+    print(f"window                {start} to {end}")
 
     rows: List[dict] = []
     start_row = 0
@@ -83,6 +101,16 @@ def fetch(
             "dataState": "final",
         }
         response = session.post(url, json=body, timeout=120)
+        if response.status_code == 403:
+            raise SystemExit(
+                f"403 for siteUrl {site!r}.\n"
+                "Either the string is not EXACTLY the property as Search "
+                "Console stores it, or this identity cannot read it. Run "
+                "--list-sites to see the exact strings. A URL-prefix property "
+                "looks like https://www.canesgalore.com/ and a domain "
+                "property like sc-domain:canesgalore.com; the two are not "
+                f"interchangeable.\nBody: {response.text[:400]}"
+            )
         response.raise_for_status()
         block = response.json().get("rows", [])
         for row in block:
@@ -120,7 +148,18 @@ def main() -> None:
     parser.add_argument("--lag", type=int, default=3, help="skip the most recent N days")
     parser.add_argument("--out", default="data/tabs/gsc_query_page.csv")
     parser.add_argument("--dimensions", default="query,page")
+    parser.add_argument("--list-sites", action="store_true",
+                        help="print every readable property and exit")
     args = parser.parse_args()
+
+    if args.list_sites:
+        entries = list_sites()
+        if not entries:
+            raise SystemExit("No Search Console properties readable by this identity.")
+        print("Copy the exact siteUrl you want into --site:")
+        for entry in entries:
+            print(f"  {entry['siteUrl']}   ({entry.get('permissionLevel', '?')})")
+        return
 
     end = dt.date.today() - dt.timedelta(days=args.lag)
     start = end - dt.timedelta(days=args.days - 1)

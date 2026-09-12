@@ -11,7 +11,8 @@ disk unless --refresh is passed.
     python3 scripts/collect.py --skip-products    # tabs + articles only
 
 Credentials, all read-only:
-    GOOGLE_APPLICATION_CREDENTIALS  service account key (canes-galore-scripts)
+    GOOGLE_APPLICATION_CREDENTIALS  service account key, if one exists. None is
+                                    known to; prefer --source export.
     SHOPIFY_STORE_DOMAIN            e.g. canes-galore.myshopify.com
     SHOPIFY_ADMIN_TOKEN             Admin API access token
     SHOPIFY_API_VERSION             optional, defaults below

@@ -33,14 +33,28 @@ The Shopify backfill widened the picture a lot: **100 blog landing pages
 over 90 days against the 38 the 28-day GA export showed**, and 112 blog URLs
 now scored.
 
-`scripts/lib_gsc.py` needs the `canes-galore-scripts` service account added
-as a user on the Search Console property, then:
+**The service account does not exist.** `GOOGLE_APPLICATION_CREDENTIALS` is
+unset on Chris's machine and no key file is anywhere in his home directory.
+The build spec's "canes-galore-scripts service account" was never verified;
+a bound Apps Script runs as the sheet's owner over OAuth and needs no key.
 
-    python3 scripts/lib_gsc.py --days 90 --out data/tabs/gsc_query_page.csv
-    python3 scripts/score.py --show
+So the pull goes in Apps Script, where the identity is already correct:
 
-Supermetrics has both Search Console and Analytics authenticated but the
-team's trial expired 2026-07-12, so that route is closed.
+1. Paste `apps_script/gsc_query_page.gs` into the Monday script project.
+2. Add `https://www.googleapis.com/auth/webmasters.readonly` to
+   `oauthScopes` in the manifest.
+3. Run `listSearchConsoleSites()`, copy the exact siteUrl into `SITE_URL`.
+4. Run `exportQueryPage()`. It writes a `GSC_Query_Page` tab.
+5. Re-export the sheet, then `collect.py` and `score.py` pick the tab up with
+   no further changes and `intent_source` becomes `measured`.
+
+Verified with a synthetic fixture: the join flips to measured and scored
+pages get distinct intent values (0.759 and 0.605) instead of the flat 0.527
+prior everything carries today.
+
+`scripts/lib_gsc.py` remains as a local fallback; it needs `GSC_ACCESS_TOKEN`
+or a real key. Supermetrics has Search Console authenticated but the team's
+trial expired 2026-07-12, so that route is closed.
 
 **Until the GSC backfill runs, the intent column barely works.** Only 18 of
 68 candidates have enough attributed queries to score on their own data; the
