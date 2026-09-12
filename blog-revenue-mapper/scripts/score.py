@@ -18,6 +18,7 @@ import argparse
 import csv
 import json
 import os
+import re
 import sys
 from typing import Dict, List, Optional
 from urllib.parse import urlparse
@@ -83,6 +84,16 @@ class HandleResolver:
             return None
         self.unresolved.append(handle)
         return None
+
+
+def window_end(config: dict) -> str:
+    """Last day of the reporting window, preferring the Scorecard tab."""
+    scorecard = lib_sheet.read_tab(os.path.join(DATA, "tabs", "scorecard.csv"))
+    period = next((r.get("this_period", "") for r in scorecard if r.get("metric") == "period"), "")
+    match = re.findall(r"\d{4}-\d{2}-\d{2}", period)
+    if len(match) >= 2:
+        return match[-1]
+    return str(config["window"].get("ends", ""))
 
 
 def load_article_index() -> Dict[str, dict]:
@@ -178,6 +189,7 @@ def build_rows(config: dict) -> Dict[str, object]:
 
     low = scoring["striking_distance_min_position"]
     high = scoring["striking_distance_max_position"]
+    closes = window_end(config)
 
     for handle, row in rows.items():
         hits = attributed.get(handle, [])
@@ -226,17 +238,31 @@ def build_rows(config: dict) -> Dict[str, object]:
         row["signals_cached"] = handle in signals
 
         # A link to /search?q= is not a path to a product; it is a path to a
-        # results page. Only a shop block or a direct product/collection link
-        # counts as an existing product path.
+        # results page, and never counts.
         row["has_product_link"] = bool(
             row["has_shop_block"]
             or row["product_link_count"] > 0
             or row["collection_link_count"] > 0
         )
+        # What the candidate filter treats as "already handled". See
+        # config.yaml: scoring.existing_path_signal.
+        if scoring.get("existing_path_signal", "shop_block") == "shop_block":
+            row["has_existing_path"] = row["has_shop_block"]
+        else:
+            row["has_existing_path"] = row["has_product_link"]
 
         article = index.get(handle, {})
         row["title"] = article.get("title", "")
         row["is_published"] = article.get("isPublished")
+        row["updated_at"] = (article.get("updatedAt") or "")[:10]
+        # An article edited after the window closed is NOT measured by these
+        # numbers. Seven posts received their shop block days after this
+        # window ended, so their add-to-cart figures describe the page as it
+        # was BEFORE the block existed. Reading them as block performance is
+        # the single easiest mistake to make with this file.
+        row["edited_after_window"] = bool(
+            row["updated_at"] and closes and row["updated_at"] > closes
+        )
         row["url"] = f"https://{config['store']['domain']}{prefix}{handle}"
 
         for key in ("sessions", "add_to_carts", "purchases", "revenue", "clicks",
@@ -296,7 +322,8 @@ COLUMNS = [
     "buying_intent_score", "intent_source", "measured_intent_score",
     "intent_query_support", "well_supported",
     "striking_distance_queries", "opportunity_score",
-    "has_product_link", "has_shop_block",
+    "has_product_link", "has_shop_block", "has_existing_path",
+    "updated_at", "edited_after_window",
     "product_link_count", "collection_link_count", "search_link_count",
     "paragraph_count", "word_count", "is_published", "signals_cached",
     "top_queries",
@@ -325,6 +352,9 @@ def to_output(row: dict, rank: int) -> dict:
         "opportunity_score": row["opportunity_score"],
         "has_product_link": row["has_product_link"],
         "has_shop_block": row["has_shop_block"],
+        "has_existing_path": row["has_existing_path"],
+        "updated_at": row["updated_at"],
+        "edited_after_window": row["edited_after_window"],
         "product_link_count": row["product_link_count"],
         "collection_link_count": row["collection_link_count"],
         "search_link_count": row["search_link_count"],
@@ -355,7 +385,7 @@ def main() -> None:
     min_sessions = config["scoring"]["min_sessions"]
     candidates = [
         row for row in rows.values()
-        if row["sessions"] >= min_sessions and (args.all or not row["has_product_link"])
+        if row["sessions"] >= min_sessions and (args.all or not row["has_existing_path"])
     ]
     candidates.sort(key=lambda row: (-row["opportunity_score"], -row["sessions"]))
 
@@ -367,7 +397,14 @@ def main() -> None:
         for rank, row in enumerate(candidates, start=1):
             writer.writerow(to_output(row, rank))
 
+    edited = sorted(
+        (h for h, r in rows.items() if r["edited_after_window"] and r["sessions"] >= min_sessions),
+        key=lambda h: -rows[h]["sessions"],
+    )
     base = baseline(config)
+    base["window_ends"] = window_end(config)
+    base["articles_edited_after_window"] = edited
+    base["sessions_on_articles_edited_after_window"] = sum(rows[h]["sessions"] for h in edited)
     with open(os.path.join(ROOT, config["output"]["baseline_json"]), "w", encoding="utf-8") as fh:
         json.dump(base, fh, indent=2)
 
@@ -392,6 +429,15 @@ def main() -> None:
               f"for these, so they may be listed as candidates in error:")
         for handle in missing_signals:
             print(f"          {handle}")
+    if edited:
+        touched = sum(rows[h]["sessions"] for h in edited)
+        print()
+        print(f"NOTE  {len(edited)} scored articles were edited after the window "
+              f"closed ({base['window_ends']}), covering {touched:.0f} sessions "
+              f"({100 * touched / base['blog_sessions']:.0f}% of blog traffic).")
+        print("      Their add-to-cart figures describe the page BEFORE that edit.")
+        print("      They are a clean pre-treatment baseline, not a measured result.")
+        print()
     if resolver and resolver.unresolved:
         print(f"WARNING {len(resolver.unresolved)} paths did not match any article handle")
     if resolver and resolver.ambiguous:

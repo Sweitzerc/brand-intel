@@ -78,6 +78,7 @@ query Articles($first: Int!, $after: String) {
       title
       isPublished
       publishedAt
+      updatedAt
       tags
       body
       blog { handle }
@@ -257,6 +258,7 @@ def collect_articles(config: dict, refresh: bool) -> None:
                 "title": node["title"],
                 "isPublished": node.get("isPublished"),
                 "publishedAt": node.get("publishedAt"),
+                "updatedAt": node.get("updatedAt"),
                 "tags": node.get("tags", []),
             }
         )

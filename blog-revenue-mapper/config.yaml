@@ -26,6 +26,9 @@ window:
   # The spec was written assuming 90 days; it is not. Column names use _28d.
   days: 28
   label: "28d"
+  # Last day of the reporting window, read from the Scorecard tab when
+  # present. An article edited after this date is not measured by this data.
+  ends: "2026-09-05"
 
 scoring:
   # A query at position 5-20 is "striking distance". The sheet already
@@ -35,6 +38,13 @@ scoring:
   striking_distance_max_position: 20
   # Minimum sessions for a blog URL to be considered at all.
   min_sessions: 25
+  # What counts as "already has a product path", and so is filtered out of
+  # candidates.csv by default.
+  #   shop_block  only a cg-shop-block product module counts
+  #   any_link    a /products/ or /collections/ link anywhere also counts
+  # Posts carrying a lone collection link in prose converted at 0.08% in the
+  # last window, so a link in prose is not treated as a product path.
+  existing_path_signal: "shop_block"
   # A page needs at least this many attributed queries for its intent score
   # to be treated as well-supported.
   min_intent_query_support: 3
