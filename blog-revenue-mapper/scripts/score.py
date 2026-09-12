@@ -20,6 +20,7 @@ import json
 import os
 import sys
 from typing import Dict, List, Optional
+from urllib.parse import urlparse
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -40,18 +41,18 @@ def load_config() -> dict:
 
 
 def blog_handle_from(value: str, prefix: str) -> Optional[str]:
-    """Pull the article handle out of a GA path or a GSC absolute URL."""
+    """Pull the article handle out of a GA path or a GSC absolute URL.
+
+    GA_Landing gives paths ("/blogs/news/x"); GSC_Pages gives absolute URLs
+    ("https://www.canesgalore.com/blogs/news/x"). Both reduce to the handle.
+    """
     if not value:
         return None
-    text = value.strip()
-    for scheme in ("https://", "http://"):
-        if text.startswith(scheme):
-            text = "/" + text[len(scheme):].split("/", 1)[-1] if "/" in text[len(scheme):] else ""
-    text = text.split("?")[0].split("#")[0]
-    if not text.startswith(prefix):
+    parsed = urlparse(value.strip())
+    path = parsed.path or ""
+    if not path.startswith(prefix):
         return None
-    handle = text[len(prefix):].strip("/")
-    return handle or None
+    return path[len(prefix):].strip("/") or None
 
 
 class HandleResolver:
@@ -254,7 +255,7 @@ def build_rows(config: dict) -> Dict[str, object]:
     }
 
 
-def baseline(config: dict, rows: Dict[str, dict]) -> dict:
+def baseline(config: dict) -> dict:
     """Phase 0 must leave Phase 1 something to beat. See spec section 6."""
     ga = lib_sheet.read_tab(os.path.join(DATA, "tabs", "ga_landing.csv"))
     prefix = config["store"]["blog_path_prefix"]
@@ -366,7 +367,7 @@ def main() -> None:
         for rank, row in enumerate(candidates, start=1):
             writer.writerow(to_output(row, rank))
 
-    base = baseline(config, rows)
+    base = baseline(config)
     with open(os.path.join(ROOT, config["output"]["baseline_json"]), "w", encoding="utf-8") as fh:
         json.dump(base, fh, indent=2)
 

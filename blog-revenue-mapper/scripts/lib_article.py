@@ -30,11 +30,22 @@ TAG_RE = re.compile(r"<[^>]+>")
 COMMENT_RE = re.compile(r"<!--.*?-->", re.S)
 
 
+# The articles were hand-edited over several years and link to the store in
+# every shape: with and without a scheme, with and without www, and with at
+# least one typo'd domain (canegalore.com). All of them are internal links.
+SITE_HOST_RE = re.compile(
+    r"^(?:https?:)?/{0,2}(?:www\.)?canes?galore\.com",
+    re.I,
+)
+
+
 def _path_of(href: str) -> str:
     """Reduce an href to a site-relative path, lowercased."""
     href = href.strip()
-    href = re.sub(r"^https?://(www\.)?canesgalore\.com", "", href, flags=re.I)
-    return href.lower()
+    stripped = SITE_HOST_RE.sub("", href)
+    if stripped != href and not stripped.startswith("/"):
+        stripped = "/" + stripped
+    return stripped.lower()
 
 
 class _Text(HTMLParser):
