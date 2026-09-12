@@ -33,6 +33,31 @@ import lib_sheet  # noqa: E402
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATA = os.path.join(ROOT, "data")
 
+# Approximate organic click-through rate by rank position. Used to discount a
+# query's impressions when weighting intent: a query the page ranks 6th for
+# says far more about what that page is for than one it ranks 40th for, even
+# when the 40th has more impressions. Weighting by impressions alone lets a
+# huge, barely-ranking head term drown out the queries that actually describe
+# the page.
+POSITION_CTR = {
+    1: 0.280, 2: 0.150, 3: 0.110, 4: 0.080, 5: 0.060,
+    6: 0.050, 7: 0.040, 8: 0.033, 9: 0.028, 10: 0.025,
+}
+POSITION_CTR_FLOOR = 0.002
+
+
+def position_weight(position: float) -> float:
+    """Expected CTR at this rank. Beyond position 10 it decays smoothly."""
+    if position is None or position <= 0:
+        # No position reported - treat as mid-page rather than discarding it.
+        return POSITION_CTR[10]
+    rank = int(round(position))
+    if rank in POSITION_CTR:
+        return POSITION_CTR[rank]
+    if rank < 1:
+        return POSITION_CTR[1]
+    return max(POSITION_CTR[10] * (10.0 / rank), POSITION_CTR_FLOOR)
+
 
 def load_config() -> dict:
     import yaml  # type: ignore
@@ -94,6 +119,43 @@ def window_end(config: dict) -> str:
     if len(match) >= 2:
         return match[-1]
     return str(config["window"].get("ends", ""))
+
+
+def load_query_page(prefix: str, resolve) -> Optional[Dict[str, List[dict]]]:
+    """The real query-by-page join, when scripts/lib_gsc.py has produced it.
+
+    When this file exists there is no estimation: every query row names the
+    page it appeared on. Falling back to lib_attribute is only for when it
+    does not.
+    """
+    path = os.path.join(DATA, "tabs", "gsc_query_page.csv")
+    rows = lib_sheet.read_tab(path)
+    if not rows:
+        return None
+    by_page: Dict[str, List[dict]] = {}
+    for record in rows:
+        handle = resolve(blog_handle_from(record.get("page", ""), prefix))
+        if not handle:
+            continue
+        by_page.setdefault(handle, []).append(record)
+    return by_page
+
+
+def load_shopify_sessions(window: str, resolve, prefix: str) -> Dict[str, dict]:
+    """Shopify's own session funnel by landing page, if collected."""
+    path = os.path.join(DATA, "tabs", f"shopify_sessions_{window}.csv")
+    out: Dict[str, dict] = {}
+    for record in lib_sheet.read_tab(path):
+        handle = resolve(blog_handle_from(record.get("landing_page_path", ""), prefix))
+        if not handle:
+            continue
+        out[handle] = {
+            "sessions": lib_sheet.num(record.get("sessions")),
+            "add_to_carts": lib_sheet.num(record.get("sessions_with_cart_additions")),
+            "reached_checkout": lib_sheet.num(record.get("sessions_that_reached_checkout")),
+            "completed_checkout": lib_sheet.num(record.get("sessions_that_completed_checkout")),
+        }
+    return out
 
 
 def load_article_index() -> Dict[str, dict]:
@@ -173,7 +235,18 @@ def build_rows(config: dict) -> Dict[str, object]:
         for handle in rows
     }
     query_records = [q for q in queries if (q.get("query") or "").strip()]
-    attributed = lib_attribute.attribute(query_records, vocabulary)
+    joined = load_query_page(prefix, canonical)
+    if joined is not None:
+        attributed = {handle: joined.get(handle, []) for handle in rows}
+        join_kind = "measured"
+        query_records = [
+            {"query": r.get("query", ""), "impressions": r.get("impressions"),
+             "clicks": r.get("clicks"), "position": r.get("position")}
+            for rows_for_page in joined.values() for r in rows_for_page
+        ]
+    else:
+        attributed = lib_attribute.attribute(query_records, vocabulary)
+        join_kind = "attributed"
 
     # Site-level prior. When too few queries can be attributed to a page, a
     # measured score of 0.0 would say "this page has no buying intent", which
@@ -183,13 +256,15 @@ def build_rows(config: dict) -> Dict[str, object]:
     for record in query_records:
         _, _, weight = lib_intent.classify(record["query"])
         impressions = max(lib_sheet.num(record.get("impressions")), 1.0)
-        prior_weight += weight * impressions
-        prior_impressions += impressions
+        evidence = impressions * position_weight(lib_sheet.num(record.get("position")))
+        prior_weight += weight * evidence
+        prior_impressions += evidence
     site_prior = round(prior_weight / prior_impressions, 3) if prior_impressions else 0.0
 
     low = scoring["striking_distance_min_position"]
     high = scoring["striking_distance_max_position"]
     closes = window_end(config)
+    shopify = {w: load_shopify_sessions(w, canonical, prefix) for w in ("90d", "28d")}
 
     for handle, row in rows.items():
         hits = attributed.get(handle, [])
@@ -199,8 +274,13 @@ def build_rows(config: dict) -> Dict[str, object]:
         for hit in hits:
             label, reason, weight = lib_intent.classify(hit["query"])
             impressions = max(lib_sheet.num(hit.get("impressions")), 1.0)
-            weight_total += weight * impressions
-            impression_total += impressions
+            position = lib_sheet.num(hit.get("position"))
+            # Weight = impressions discounted by rank. Expected clicks, near
+            # enough, which is the right measure of how much this query tells
+            # us about the page.
+            evidence = impressions * position_weight(position)
+            weight_total += weight * evidence
+            impression_total += evidence
             scored.append(
                 {
                     "query": hit["query"],
@@ -208,18 +288,19 @@ def build_rows(config: dict) -> Dict[str, object]:
                     "reason": reason,
                     "weight": weight,
                     "impressions": impressions,
+                    "position": position,
+                    "evidence": evidence,
                     "clicks": lib_sheet.num(hit.get("clicks")),
-                    "position": lib_sheet.num(hit.get("position")),
                     "striking": striking_distance(hit, low, high),
                 }
             )
-        scored.sort(key=lambda item: -item["impressions"])
+        scored.sort(key=lambda item: -item["evidence"])
 
         row["intent_query_support"] = len(scored)
         measured = round(weight_total / impression_total, 3) if impression_total else None
         if measured is not None and len(scored) >= scoring["min_intent_query_support"]:
             row["buying_intent_score"] = measured
-            row["intent_source"] = "attributed"
+            row["intent_source"] = join_kind
         else:
             row["buying_intent_score"] = site_prior
             row["intent_source"] = "site_prior"
@@ -227,6 +308,7 @@ def build_rows(config: dict) -> Dict[str, object]:
         row["striking_distance_queries"] = sum(1 for item in scored if item["striking"])
         row["top_queries"] = [item["query"] for item in scored[:5]]
         row["query_impressions"] = sum(item["impressions"] for item in scored)
+        row["top_query_intent"] = max((item["weight"] for item in scored), default=0.0)
 
         signal = signals.get(handle, {})
         row["has_shop_block"] = bool(signal.get("has_shop_block"))
@@ -269,12 +351,24 @@ def build_rows(config: dict) -> Dict[str, object]:
                     "impressions", "avg_position", "prev_sessions"):
             row.setdefault(key, 0.0)
 
-        row["opportunity_score"] = round(row["sessions"] * row["buying_intent_score"], 1)
-        row["well_supported"] = row["intent_source"] == "attributed"
+        for window_label in ("90d", "28d"):
+            funnel = shopify[window_label].get(handle, {})
+            for metric, value in funnel.items():
+                row[f"{metric}_{window_label}"] = value
+            for metric in ("sessions", "add_to_carts", "reached_checkout", "completed_checkout"):
+                row.setdefault(f"{metric}_{window_label}", "")
+
+        # Rank on the widest window we actually have.
+        wide = row.get("sessions_90d")
+        row["ranking_window"] = "90d" if isinstance(wide, float) and wide > 0 else "28d"
+        row["ranking_sessions"] = wide if row["ranking_window"] == "90d" else row["sessions"]
+        row["opportunity_score"] = round(row["ranking_sessions"] * row["buying_intent_score"], 1)
+        row["well_supported"] = row["intent_source"] != "site_prior"
 
     return {
         "rows": rows,
         "site_prior": site_prior,
+        "join_kind": join_kind,
         "resolver": resolver,
         "attributed": attributed,
         "query_count": len(query_records),
@@ -317,10 +411,12 @@ def baseline(config: dict) -> dict:
 
 COLUMNS = [
     "rank", "handle", "title", "url",
-    "sessions_28d", "add_to_carts_28d", "purchases_28d", "revenue_28d",
+    "ranking_window", "ranking_sessions",
+    "sessions_90d", "add_to_carts_90d", "reached_checkout_90d", "completed_checkout_90d",
+    "ga_sessions_28d", "ga_add_to_carts_28d", "purchases_28d", "revenue_28d",
     "clicks_28d", "impressions_28d", "avg_position",
     "buying_intent_score", "intent_source", "measured_intent_score",
-    "intent_query_support", "well_supported",
+    "intent_query_support", "well_supported", "top_query_intent",
     "striking_distance_queries", "opportunity_score",
     "has_product_link", "has_shop_block", "has_existing_path",
     "updated_at", "edited_after_window",
@@ -336,8 +432,14 @@ def to_output(row: dict, rank: int) -> dict:
         "handle": row["handle"],
         "title": row.get("title", ""),
         "url": row["url"],
-        "sessions_28d": int(row["sessions"]),
-        "add_to_carts_28d": int(row["add_to_carts"]),
+        "ranking_window": row["ranking_window"],
+        "ranking_sessions": int(row["ranking_sessions"]),
+        "sessions_90d": row.get("sessions_90d", ""),
+        "add_to_carts_90d": row.get("add_to_carts_90d", ""),
+        "reached_checkout_90d": row.get("reached_checkout_90d", ""),
+        "completed_checkout_90d": row.get("completed_checkout_90d", ""),
+        "ga_sessions_28d": int(row["sessions"]),
+        "ga_add_to_carts_28d": int(row["add_to_carts"]),
         "purchases_28d": int(row["purchases"]),
         "revenue_28d": row["revenue"],
         "clicks_28d": int(row["clicks"]),
@@ -348,6 +450,7 @@ def to_output(row: dict, rank: int) -> dict:
         "measured_intent_score": row["measured_intent_score"],
         "intent_query_support": row["intent_query_support"],
         "well_supported": row["well_supported"],
+        "top_query_intent": row["top_query_intent"],
         "striking_distance_queries": row["striking_distance_queries"],
         "opportunity_score": row["opportunity_score"],
         "has_product_link": row["has_product_link"],
@@ -385,9 +488,10 @@ def main() -> None:
     min_sessions = config["scoring"]["min_sessions"]
     candidates = [
         row for row in rows.values()
-        if row["sessions"] >= min_sessions and (args.all or not row["has_existing_path"])
+        if max(row["sessions"], row["ranking_sessions"]) >= min_sessions
+        and (args.all or not row["has_existing_path"])
     ]
-    candidates.sort(key=lambda row: (-row["opportunity_score"], -row["sessions"]))
+    candidates.sort(key=lambda row: (-row["opportunity_score"], -row["ranking_sessions"]))
 
     os.makedirs(os.path.join(ROOT, "out"), exist_ok=True)
     out_path = os.path.join(ROOT, config["output"]["candidates_csv"])
@@ -413,9 +517,13 @@ def main() -> None:
     # the long tail below min_sessions never reaches candidates.csv anyway.
     missing_signals = sorted(
         h for h, r in rows.items()
-        if not r["signals_cached"] and r["sessions"] >= min_sessions
+        if not r["signals_cached"] and max(r["sessions"], r["ranking_sessions"]) >= min_sessions
     )
 
+    windows = {row["ranking_window"] for row in candidates}
+    print(f"query->page join      {built['join_kind']}"
+          f"{'  (estimated - see lib_attribute.py)' if built['join_kind'] == 'attributed' else ''}")
+    print(f"ranking window        {'/'.join(sorted(windows)) or 'n/a'}")
     print(f"site intent prior     {built['site_prior']}")
     print(f"blog URLs scored      {len(rows)}")
     print(f"candidates written    {len(candidates)}  -> {config['output']['candidates_csv']}")
@@ -452,7 +560,7 @@ def main() -> None:
         print("-" * len(header))
         for rank, row in enumerate(candidates[:limit], start=1):
             mark = " " if row["well_supported"] else "~"
-            print(f"{rank:>2}  {row['sessions']:>5.0f} {row['buying_intent_score']:>6.2f}{mark}"
+            print(f"{rank:>2}  {row['ranking_sessions']:>5.0f} {row['buying_intent_score']:>6.2f}{mark}"
                   f"{row['intent_query_support']:>4} {row['striking_distance_queries']:>3} "
                   f"{row['opportunity_score']:>7.1f}  "
                   f"{'yes' if row['has_product_link'] else 'NO':>4}  {row['handle'][:62]}")

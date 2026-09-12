@@ -9,15 +9,23 @@ queries in the sheet mention a product noun. A commercial/not-commercial
 boolean therefore has no variance and cannot rank anything. So each label
 also carries a WEIGHT expressing how close the query sits to a purchase:
 
-  1.0  an explicit buying term - best, buy, review, vs, top, a price
-  0.8  a sizing question, or a condition paired with a product noun
-       (someone measuring their wrist is shopping, not browsing)
-  0.6  a bare product noun - shopping behaviour, but unqualified
-  0.3  ambiguous
-  0.1  informational
-  0.0  navigational
+  1.00  condition + product noun + modifier. "best walking cane for
+        arthritis" names a use case AND a selection criterion. The reader has
+        already decided to buy and is choosing between options. This is the
+        top tier by construction.
+  0.90  an explicit buying term with a product noun - best, buy, review, vs
+  0.80  condition + product noun, no modifier. "cane for arthritis"
+  0.70  a sizing question about a product. Someone measuring their wrist is
+        shopping, not browsing
+  0.50  a bare product noun - shopping behaviour, but unqualified
+  0.30  ambiguous
+  0.10  informational
+  0.00  navigational
 
-`buying_intent_score` is the impression-weighted mean of these weights.
+`buying_intent_score` is a weighted mean of these, where each query's weight
+is its impressions discounted by rank position - see POSITION_WEIGHT in
+score.py. A query sitting at position 40 carries far less signal about what
+this page is for than one at position 6.
 """
 
 from __future__ import annotations
@@ -73,13 +81,23 @@ AMBIGUOUS = "ambiguous"
 
 # How close each rule sits to a purchase. Keyed by the reason a rule fired.
 WEIGHTS = {
-    "buying term": 1.0,
-    "sizing": 0.8,
+    "condition + modifier": 1.0,
+    "buying term": 0.9,
     "condition": 0.8,
-    "bare product noun": 0.6,
+    "sizing": 0.7,
+    "bare product noun": 0.5,
     "ambiguous": 0.3,
     "informational": 0.1,
     "navigational": 0.0,
+}
+
+# A modifier is a selection criterion: it says the reader is comparing
+# options rather than asking what the thing is.
+MODIFIER_WORDS = {
+    "best", "top", "review", "reviews", "vs", "versus", "compare",
+    "comparison", "cheap", "cheapest", "affordable", "premium", "luxury",
+    "quality", "recommended", "good", "strongest", "lightest", "sturdiest",
+    "most", "rated", "ranked", "buy", "where to buy", "for sale", "near me",
 }
 
 
@@ -102,19 +120,33 @@ def classify(query: str) -> Tuple[str, str, float]:
     has_noun = _has_product_noun(text)
     words = set(re.findall(r"[a-z']+", text))
 
-    # Commercial signals.
-    hits = sorted(w for w in COMMERCIAL_WORDS if re.search(rf"\b{re.escape(w)}\b", text))
-    if hits:
-        return COMMERCIAL, f"buying term: {hits[0]}", WEIGHTS["buying term"]
+    condition_hits = sorted(c for c in CONDITION_WORDS if re.search(rf"\b{re.escape(c)}\b", text))
+    modifier_hits = sorted(m for m in MODIFIER_WORDS if re.search(rf"\b{re.escape(m)}\b", text))
+    buying_hits = sorted(w for w in COMMERCIAL_WORDS if re.search(rf"\b{re.escape(w)}\b", text))
+
+    # Top tier: a use case AND a selection criterion, against a product.
+    # "best walking cane for arthritis" - decided to buy, choosing between.
+    if condition_hits and has_noun and modifier_hits:
+        return (
+            COMMERCIAL,
+            f"condition + product noun + modifier: {condition_hits[0]} + {modifier_hits[0]}",
+            WEIGHTS["condition + modifier"],
+        )
+
+    # An explicit buying term. Worth more when it qualifies a product noun.
+    if buying_hits:
+        return COMMERCIAL, f"buying term: {buying_hits[0]}", WEIGHTS["buying term"]
     if PRICE_RE.search(text):
         return COMMERCIAL, "buying term: price token", WEIGHTS["buying term"]
     if is_brand and has_noun:
         return COMMERCIAL, "buying term: brand + product noun", WEIGHTS["buying term"]
-    if SIZE_RE.search(text) and has_noun:
-        return COMMERCIAL, "sizing question about a product", WEIGHTS["sizing"]
-    condition_hits = sorted(c for c in CONDITION_WORDS if re.search(rf"\b{re.escape(c)}\b", text))
+
+    # A use case against a product, with no selection criterion.
     if condition_hits and has_noun:
         return COMMERCIAL, f"condition + product noun: {condition_hits[0]}", WEIGHTS["condition"]
+
+    if SIZE_RE.search(text) and has_noun:
+        return COMMERCIAL, "sizing question about a product", WEIGHTS["sizing"]
 
     # Informational signals.
     if text.startswith(INFORMATIONAL_PREFIXES):

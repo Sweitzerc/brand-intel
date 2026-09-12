@@ -92,21 +92,59 @@ plain, a little dry. Never pitying, never clinical, never a hard sell.
 
 Two things in the build spec do not match the reports sheet. Both matter.
 
-**The window is 28 days, not 90.** The Scorecard tab says
-"Trailing 28 days, 3-day GSC lag". Every column is named `_28d` for that
-reason. Do not relabel them `_90d`.
+**The 28-day window was a pull limit, not a data limit.** The Scorecard tab
+says "Trailing 28 days, 3-day GSC lag" because that is the range the Monday
+Apps Script asks for. Search Console retains roughly 16 months and the GA4
+property has full history, so 90 days was always available.
 
-**GSC_Queries has no `page` column.** The spec's `buying_intent_score` is
-defined as the share of *a page's* queries that look commercial, but the
-sheet exports queries and pages as two independent top-N lists with no join
-key. `lib_attribute.py` estimates the mapping by matching query terms
-against each page's slug and title, and every row carries
-`intent_query_support` so a page scored off one weak match is visibly
-different from one scored off twelve.
+Two backfills exist, and `score.py` picks them up automatically when their
+files are present under `data/tabs/`:
 
-The real fix is a one-line change to the Monday Apps Script: export the GSC
-query report with both the query and page dimensions. Until then, read
-`buying_intent_score` as a ranking aid, not a measurement.
+    scripts/lib_gsc.py   query x page straight from the Search Console API,
+                         any window. Needs the service account to be a user
+                         on the property.
+    ShopifyQL            sessions, cart additions, reached and completed
+                         checkout by landing page over 90 days.
+
+Columns from the reports sheet keep their `_28d` names. Shopify columns are
+`_90d`. `ranking_window` on each row says which one drove the ranking.
+
+Shopify sessions and GA4 sessions are different measurement systems and will
+not agree. Do not compare a `_90d` figure against a `_28d` one and call the
+difference a trend. Compare like with like.
+
+**GSC_Queries has no `page` column** — but the API does. The sheet exports
+queries and pages as two independent top-N lists with no join key.
+`scripts/lib_gsc.py` pulls both dimensions together and writes
+`data/tabs/gsc_query_page.csv`; when that file exists `score.py` uses the
+real join and reports `intent_source = measured`. Without it,
+`lib_attribute.py` estimates the mapping from slug and title tokens and
+reports `intent_source = attributed`. Pages with too little support fall
+back to the site prior and report `site_prior`.
+
+Check the `intent_source` column before trusting any intent number.
+
+**Intent is graded, not binary.** 267 of 275 queries on this site mention a
+product noun, so a commercial/not flag has no variance at all. Each query
+gets a purchase-proximity weight instead, and the tiers are ordered by how
+close the searcher is to choosing a product:
+
+| Weight | Rule | Example |
+|---|---|---|
+| 1.00 | condition + product noun + modifier | best walking cane for arthritis |
+| 0.90 | explicit buying term | walking stick vs hiking pole |
+| 0.80 | condition + product noun | cane for parkinsons |
+| 0.70 | sizing question about a product | how to measure for a cane |
+| 0.50 | bare product noun | walking cane |
+| 0.30 | ambiguous | |
+| 0.10 | informational | how to use a cane |
+| 0.00 | navigational | canes galore |
+
+`buying_intent_score` is the weighted mean of those, where each query's
+weight is **impressions discounted by rank position** (`POSITION_WEIGHT` in
+`score.py`, an approximate organic CTR curve). Weighting by impressions
+alone lets a huge head term the page barely ranks for drown out the queries
+that actually describe it.
 
 **Some posts already have blocks.** Seven of the 38 trafficked posts already
 contain a `cg-shop-block` product module. `has_product_link` in the spec is

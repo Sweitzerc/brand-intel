@@ -21,6 +21,20 @@ store:
   sellable_location: "Collins Place"
   ignore_locations: ["Missouri Returns"]
 
+backfill:
+  # The 28-day window was the Apps Script's date range, not a data limit.
+  # Search Console retains ~16 months and the GA4 property has full history.
+  #   scripts/lib_gsc.py  pulls query x page straight from the Search Console
+  #                       API over any window, which is the join the reports
+  #                       sheet does not have.
+  #   Shopify sessions    pulled by landing page over 90 days via ShopifyQL.
+  # score.py uses both automatically when their files exist under data/tabs/.
+  gsc_query_page: "data/tabs/gsc_query_page.csv"
+  shopify_sessions_90d: "data/tabs/shopify_sessions_90d.csv"
+  shopify_sessions_28d: "data/tabs/shopify_sessions_28d.csv"
+  days: 90
+  gsc_lag_days: 3
+
 window:
   # The reports sheet is a trailing 28-day window with a 3-day GSC lag.
   # The spec was written assuming 90 days; it is not. Column names use _28d.
