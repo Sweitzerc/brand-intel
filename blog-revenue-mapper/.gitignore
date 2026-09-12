@@ -1,0 +1,12 @@
+# Cached inputs. Re-creatable with: python3 scripts/collect.py --refresh
+data/
+# Pre-write article HTML snapshots. Local safety net, not source.
+backups/
+# Generated, but candidates.csv is the Phase 0 deliverable and is kept.
+out/*
+!out/.gitkeep
+!out/candidates.csv
+!out/baseline.json
+__pycache__/
+*.pyc
+.env

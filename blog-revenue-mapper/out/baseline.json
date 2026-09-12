@@ -1,0 +1,14 @@
+{
+  "period": "2026-08-09 \u2192 2026-09-05",
+  "window_days": 28,
+  "blog_landing_pages": 38,
+  "blog_sessions": 4552.0,
+  "blog_add_to_carts": 6.0,
+  "blog_purchases": 0.0,
+  "blog_revenue": 0.0,
+  "blog_atc_rate_pct": 0.132,
+  "blog_conv_rate_pct": 0.0,
+  "blog_share_of_sessions_pct": 36.5,
+  "all_landing_sessions": 12488.0,
+  "note": "Primary metric for Phase 1 is blog_atc_rate_pct. Re-run score.py after the blocks ship and compare against this file."
+}

@@ -1,0 +1,45 @@
+# Blog Revenue Mapper — configuration
+# Phase 0 (collect + score) reads everything below. No writes to the store.
+
+sheet:
+  # Canes Galore reports sheet, populated by the Monday Apps Script.
+  id: "1fYhCKWa8ES09ATPrnhgLtISJJwFiiDFId1AYE18_Lcc"
+  # Tabs are located by header signature, not by name, because the Apps Script
+  # has renamed tabs before. See scripts/lib_sheet.py: TAB_SIGNATURES.
+  tabs:
+    ga_landing: "GA_Landing"
+    gsc_queries: "GSC_Queries"
+    gsc_pages: "GSC_Pages"
+    scorecard: "Scorecard"
+
+store:
+  domain: "www.canesgalore.com"
+  blog_handle: "news"
+  blog_path_prefix: "/blogs/news/"
+  # Inventory location that represents real sellable stock.
+  # "Missouri Returns" is an address, not stock — never count it.
+  sellable_location: "Collins Place"
+  ignore_locations: ["Missouri Returns"]
+
+window:
+  # The reports sheet is a trailing 28-day window with a 3-day GSC lag.
+  # The spec was written assuming 90 days; it is not. Column names use _28d.
+  days: 28
+  label: "28d"
+
+scoring:
+  # A query at position 5-20 is "striking distance". The sheet already
+  # classifies this in GSC_Queries.bucket; we reuse that and only fall back
+  # to the position range when the bucket column is absent.
+  striking_distance_min_position: 5
+  striking_distance_max_position: 20
+  # Minimum sessions for a blog URL to be considered at all.
+  min_sessions: 25
+  # A page needs at least this many attributed queries for its intent score
+  # to be treated as well-supported.
+  min_intent_query_support: 3
+  top_n: 20
+
+output:
+  candidates_csv: "out/candidates.csv"
+  baseline_json: "out/baseline.json"
