@@ -88,6 +88,38 @@ def read_export(path: str) -> Dict[str, List[dict]]:
     return out
 
 
+def read_xlsx(path: str) -> Dict[str, List[dict]]:
+    """Parse a full .xlsx export. Tabs are matched by header signature.
+
+    Use this in preference to read_export. Drive's markdown rendering caps
+    its output, so a large tab comes back quietly truncated; the .xlsx
+    carries every row.
+    """
+    import openpyxl  # type: ignore
+
+    book = openpyxl.load_workbook(path, read_only=True, data_only=True)
+    out: Dict[str, List[dict]] = {}
+
+    for name in book.sheetnames:
+        raw = [
+            row for row in book[name].iter_rows(values_only=True)
+            if any(cell is not None and str(cell).strip() for cell in row)
+        ]
+        if len(raw) < 2:
+            continue
+        header = [_clean(str(c)) if c is not None else "" for c in raw[0]]
+        cols = {h for h in header if h}
+        rows = [
+            dict(zip(header, ["" if c is None else c for c in row]))
+            for row in raw[1:]
+        ]
+        for tab, signature in sorted(TAB_SIGNATURES.items(), key=lambda kv: -len(kv[1])):
+            if tab not in out and signature <= cols:
+                out[tab] = rows
+                break
+    return out
+
+
 def read_api(sheet_id: str, tabs: Dict[str, str]) -> Dict[str, List[dict]]:
     """Read the tabs over the Sheets API (read-only scope)."""
     from google.oauth2 import service_account  # type: ignore

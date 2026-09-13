@@ -1,6 +1,7 @@
 # Phase 0 needs only PyYAML. The rest are for --source api and the
 # Shopify pulls, which run on Chris's machine with the read-only token.
 PyYAML>=6.0
+openpyxl>=3.1   # full .xlsx export; the markdown export truncates large tabs
 requests>=2.31
 google-api-python-client>=2.100
 google-auth>=2.23

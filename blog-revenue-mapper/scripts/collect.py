@@ -201,7 +201,12 @@ def collect_tabs(config: dict, source: str, refresh: bool) -> None:
         print(f"tabs      cached ({len(existing)} files)")
         return
 
-    if source == "export":
+    if source == "xlsx":
+        path = os.path.join(DATA, "raw", "reports.xlsx")
+        if not os.path.exists(path):
+            raise SystemExit(f"missing {path} - download the sheet as .xlsx there")
+        tabs = lib_sheet.read_xlsx(path)
+    elif source == "export":
         path = os.path.join(DATA, "raw", "sheet_export.md")
         if not os.path.exists(path):
             raise SystemExit(f"missing {path} - export the sheet there, or use --source api")
@@ -334,8 +339,9 @@ def rebuild_signals() -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Stage 1 - collect. Read-only.")
-    parser.add_argument("--source", choices=["api", "export"], default="api",
-                        help="where the sheet comes from (default: api)")
+    parser.add_argument("--source", choices=["api", "xlsx", "export"], default="api",
+                        help="where the sheet comes from. xlsx is preferred for "
+                             "large tabs; the markdown export truncates silently.")
     parser.add_argument("--refresh", action="store_true", help="refetch instead of using the cache")
     parser.add_argument("--skip-products", action="store_true")
     parser.add_argument("--skip-sessions", action="store_true",
