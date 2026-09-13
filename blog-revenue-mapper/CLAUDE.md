@@ -100,9 +100,9 @@ property has full history, so 90 days was always available.
 Two backfills exist, and `score.py` picks them up automatically when their
 files are present under `data/tabs/`:
 
-    apps_script/         query x page from inside the sheet, running as the
-      gsc_query_page.gs  sheet owner's own Google authorisation. PREFERRED.
-                         No key file, nothing to provision. Writes a
+    apps_script/         query x page, added to the existing weekly writer
+      gsc_query_page.gs  project. PREFERRED: the scope and the property
+                         string are already configured there. Writes a
                          GSC_Query_Page tab that collect.py picks up.
     scripts/lib_gsc.py   the same pull locally, needing GSC_ACCESS_TOKEN or a
                          service account key. Fallback only.
@@ -208,6 +208,33 @@ row as evidence that its block failed.
 `data/raw/sheet_export.md` instead of calling the Sheets API, and
 `--skip-products` runs without the Shopify token. Everything caches;
 `--refresh` refetches.
+
+## The weekly writer
+
+The tabs are written by a standalone Apps Script project, "Canes Galore —
+GA4 + Search Console Weekly Writer", triggered Monday 5-6 AM. It must land
+before the Make watchdog at 7 AM and the Direction Check at 9 AM.
+
+Confirmed from its source:
+
+| | |
+|---|---|
+| GSC property | `https://www.canesgalore.com/` (URL-prefix) |
+| GA4 property | `properties/358328482` |
+| Window | `CONFIG.DAYS = 28`, a constant, not a data limit |
+| Scopes | `webmasters.readonly` already granted |
+| Landing page cap | `CONFIG.TOP_N = 100` |
+
+**`GA_Landing` is truncated at 100 rows** across the whole site, because
+`ga4Landing_` passes `TOP_N` as the GA4 limit. That is why the tab shows 38
+blog pages while Shopify sees 103 over the same 28 days. Any count taken
+from `GA_Landing` is a floor, not a total. Raising `TOP_N` widens both that
+tab and `GSC_Queries`, which slices at `TOP_N * 3`.
+
+**`gscRun_` sends one dimension per call** and does not paginate past
+`rowLimit`. That is the whole reason query x page does not exist.
+`apps_script/gsc_query_page.gs` adds it as a separate function with its own
+trigger, filtered to `/blogs/news/` and paginated.
 
 ## There is no service account
 

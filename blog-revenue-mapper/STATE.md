@@ -26,27 +26,27 @@ The 28-day window was the Apps Script's date range, not a data limit.
 | Source | Window | State |
 |---|---|---|
 | Shopify sessions by landing page | 90d + 28d | **done**, via ShopifyQL in `collect.py` |
-| GSC query x page | 90d | **blocked on credentials** — `scripts/lib_gsc.py` is written and ready |
+| GSC query x page | 90d | **ready to run** — paste one file into the existing weekly writer, no setup |
 | GA4 landing pages | 90d | not pulled; Shopify covers the same funnel |
 
 The Shopify backfill widened the picture a lot: **100 blog landing pages
 over 90 days against the 38 the 28-day GA export showed**, and 112 blog URLs
 now scored.
 
-**The service account does not exist.** `GOOGLE_APPLICATION_CREDENTIALS` is
-unset on Chris's machine and no key file is anywhere in his home directory.
-The build spec's "canes-galore-scripts service account" was never verified;
-a bound Apps Script runs as the sheet's owner over OAuth and needs no key.
+**The service account does not exist.** The tabs are written by a standalone
+Apps Script project, "Canes Galore — GA4 + Search Console Weekly Writer",
+running as the sheet owner over OAuth. No key, nothing to provision. The
+build spec's "canes-galore-scripts service account" was never real.
 
-So the pull goes in Apps Script, where the identity is already correct:
+The script already holds `webmasters.readonly` and already has the correct
+property string, so adding query x page needs no setup at all:
 
-1. Paste `apps_script/gsc_query_page.gs` into the Monday script project.
-2. Add `https://www.googleapis.com/auth/webmasters.readonly` to
-   `oauthScopes` in the manifest.
-3. Run `listSearchConsoleSites()`, copy the exact siteUrl into `SITE_URL`.
-4. Run `exportQueryPage()`. It writes a `GSC_Query_Page` tab.
-5. Re-export the sheet, then `collect.py` and `score.py` pick the tab up with
-   no further changes and `intent_source` becomes `measured`.
+1. Paste `apps_script/gsc_query_page.gs` as a second file in that project.
+2. Add a time-driven trigger for `exportQueryPage`, Monday 6-7 AM, between
+   the writer at 5-6 and the Make watchdog at 7.
+3. It writes a `GSC_Query_Page` tab, 90 days, filtered to `/blogs/news/`.
+4. `collect.py` and `score.py` pick the tab up with no further changes and
+   `intent_source` becomes `measured`.
 
 Verified with a synthetic fixture: the join flips to measured and scored
 pages get distinct intent values (0.759 and 0.605) instead of the flat 0.527
