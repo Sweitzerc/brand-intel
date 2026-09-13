@@ -163,7 +163,56 @@ inserted, so Phase 2 can be measured against them.
 
 ---
 
-## Next action
+## Next action (updated 2026-09-13)
+
+**1. Add the weekly trigger.** `exportQueryPage` ran once by hand and wrote
+16,767 rows. Without a time-driven trigger (Monday 6-7 AM) the tab goes
+stale and the intent scores drift out of date. Two minutes.
+
+**2. Do Phase 3 before Phase 1. They collide.**
+
+Seven URLs compete for the measuring/sizing cluster, splitting 26,215
+impressions and 269 clicks:
+
+| sz clicks | sz impr | avg pos | sess 90d | handle |
+|---|---|---|---|---|
+| 153 | 13,146 | 6.9 | 2,513 | the-complete-guide-to-walking-cane-heights-find-your-perfect-fit |
+| 67 | 4,339 | 14.5 | 947 | how-to-measure-your-walking-cane-find-the-perfect-fit |
+| 29 | 4,853 | 13.7 | 1,770 | how-to-measure-for-the-correct-walking-cane-height |
+| 14 | 2,382 | 23.8 | 350 | how-to-measure-your-walking-cane |
+| 5 | 905 | 23.2 | 105 | the-canes-galore-sizing-guide-how-to-measure... |
+| 1 | 238 | 54.2 | 37 | how-to-size-a-walking-cane-guide |
+| 0 | 352 | 77.4 | 11 | measure-ideal-walking-stick |
+
+Canonical is unambiguous: **the-complete-guide-to-walking-cane-heights**
+wins on clicks, impressions and position together, and it already carries a
+`cg-shop-block`. 301 the other six into it and merge their content.
+
+**The collision:** ranks 1 and 2 of `candidates.csv` are both in this
+cluster. Inserting a product block into
+`how-to-measure-your-walking-cane-find-the-perfect-fit` and then 301-ing it
+away is wasted work. Consolidate first, then re-run `score.py` and take the
+new top of the list.
+
+**3. Wait for the block verdict.** Unchanged: the seven posts blocked
+2026-09-09 to 09-11 are the running experiment and have no post-block data.
+A full window closes about **2026-10-07**.
+
+## Smaller fixes, any time
+
+- **`CONFIG.TOP_N = 100` in the weekly writer truncates `GA_Landing`** to
+  100 landing pages site-wide, which is why it showed 38 blog pages while
+  Shopify saw 103. Raising it widens `GSC_Queries` too, which slices at
+  `TOP_N * 3`.
+- **Six blog URLs draw impressions but match no article**, and read as
+  corrupted variants of real handles (`the-complete-day-...` for
+  `the-complete-guide-to-...`; `like-id-was-made-for-you` for `like-it-`).
+  Probably 404s worth redirecting.
+- **Make scenario 6191825 reads fixed ranges** (`GSC_Queries` A1:I120,
+  `GSC_Pages` A1:J60), so the Monday email reasons over the top 119 queries
+  and 59 pages of 300 and 1,000.
+
+## Superseded next action
 
 **Do not start Phase 1 by inserting more blocks. Wait for data first.**
 
