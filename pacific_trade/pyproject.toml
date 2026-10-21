@@ -1,0 +1,28 @@
+[project]
+name = "pacific-trade"
+version = "0.1.0"
+description = "Fuse NOAA AIS, Census port-level trade, and UN Comtrade for Pacific semiconductor & critical-mineral shipments"
+requires-python = ">=3.10"
+dependencies = [
+  "pandas>=2.0",
+  "numpy>=1.24",
+  "pyarrow>=14",
+  "requests>=2.31",
+  "zstandard>=0.22",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=7"]
+
+[project.scripts]
+pacific-trade = "pacific_trade.cli:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["pacific_trade"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

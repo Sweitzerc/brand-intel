@@ -1,0 +1,30 @@
+cty_code,iso2,iso3,m49_comtrade,name,verified
+1220,CA,CAN,124,Canada,0
+2010,MX,MEX,484,Mexico,0
+3330,PE,PER,604,Peru,0
+3350,BO,BOL,68,Bolivia,0
+3370,CL,CHL,152,Chile,0
+3510,BR,BRA,76,Brazil,0
+3570,AR,ARG,32,Argentina,0
+4210,NL,NLD,528,Netherlands,0
+4280,DE,DEU,276,Germany,0
+4621,RU,RUS,643,Russia,0
+5330,IN,IND,699,India,0
+5460,MM,MMR,104,Burma (Myanmar),0
+5490,TH,THA,764,Thailand,0
+5520,VN,VNM,704,Vietnam,0
+5530,LA,LAO,418,Laos,0
+5550,KH,KHM,116,Cambodia,0
+5570,MY,MYS,458,Malaysia,0
+5590,SG,SGP,702,Singapore,0
+5600,ID,IDN,360,Indonesia,0
+5650,PH,PHL,608,Philippines,0
+5700,CN,CHN,156,China,0
+5800,KR,KOR,410,"Korea, South",0
+5820,HK,HKG,344,Hong Kong,0
+5830,TW,TWN,490,Taiwan (Comtrade: Other Asia nes),0
+5880,JP,JPN,392,Japan,0
+6021,AU,AUS,36,Australia,0
+6141,NZ,NZL,554,New Zealand,0
+7660,CD,COD,180,Congo (Kinshasa),0
+7910,ZA,ZAF,710,South Africa,0

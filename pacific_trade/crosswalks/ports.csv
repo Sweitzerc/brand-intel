@@ -1,0 +1,14 @@
+schedule_d,port_name,district,unlocode,wpi_number,lat,lon,radius_km,region,census_covered,verified,notes
+3201,HONOLULU,32,USHNL,,21.307,-157.867,5,hawaii,1,0,Main Honolulu Harbor geofence
+3201,HONOLULU (BARBERS POINT),32,USNAX,,21.296,-158.110,4,hawaii,1,0,Kalaeloa/Barbers Point; assumed reported under 3201 - confirm with first porths pull
+3202,HILO,32,USITO,,19.730,-155.067,4,hawaii,1,0,
+3203,KAHULUI,32,USOGG,,20.896,-156.473,4,hawaii,1,0,
+3204,NAWILIWILI-PORT ALLEN,32,,,21.955,-159.353,4,hawaii,1,0,UN/LOCODE to fill from UNLOCODE 2025-1; Port Allen is a second small harbor
+3206,KONA,32,,,19.640,-155.997,3,hawaii,1,0,UN/LOCODE to fill from UNLOCODE 2025-1
+2704,LOS ANGELES,27,USLAX,,33.733,-118.267,4,west_coast,1,0,Adjacent to Long Beach; nearest-centre assignment
+2709,LONG BEACH,27,USLGB,,33.754,-118.216,4,west_coast,1,0,
+2809,SAN FRANCISCO,28,USSFO,,37.805,-122.400,4,west_coast,1,0,
+2811,OAKLAND,28,USOAK,,37.796,-122.279,4,west_coast,1,0,
+3001,SEATTLE,30,USSEA,,47.602,-122.339,5,west_coast,1,0,
+3002,TACOMA,30,USTIW,,47.268,-122.413,5,west_coast,1,0,
+,APRA HARBOR (GUAM),,GUAPR,,13.444,144.657,5,guam_cnmi,0,0,Guam is outside the Census trade customs territory: AIS-only context; no Census join
