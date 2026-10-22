@@ -36,9 +36,25 @@ python app.py            # open http://127.0.0.1:7860
 **Lite mode.** Run `BRAND_INTEL_LITE=1 python app.py` to skip the AI models and use fast keyword scoring
 instead. Lite mode starts instantly and runs on small machines.
 
-**Free hosting.** Create a Gradio Space on Hugging Face and push this repo to it. The header at the top of this
-file configures the Space. Free Spaces wipe their disk on restart. To keep scan history and the
-evidence log, turn on persistent storage and set the `BRAND_INTEL_DB=/data/brand_intel.db` variable.
+## Host it free on Hugging Face (auto-updating)
+
+Do this once. After that, every change merged into `main` on GitHub updates the dashboard automatically.
+
+1. **Create the Space.** Go to https://huggingface.co/new-space. Name it (for example `brand-intel`), pick
+   **Gradio** as the SDK and **Private** as the visibility. Leave it empty.
+2. **Create a token.** Go to https://huggingface.co/settings/tokens, create a token with **Write**
+   permission, and copy it.
+3. **Connect GitHub.** In this GitHub repo, go to **Settings → Secrets and variables → Actions**.
+   - Under the **Secrets** tab, add `HF_TOKEN` and paste the token.
+   - Under the **Variables** tab, add `HF_SPACE` with the value `your-hf-username/brand-intel`.
+4. **Deploy.** Go to **Actions → Deploy to Hugging Face Space → Run workflow**. The Space builds in about
+   5–10 minutes. Bookmark its **App** page.
+
+**Where to make changes.** Change settings in `config.yaml` here on GitHub, not on the Space: each deploy
+overwrites the Space with what's on GitHub.
+
+**Saving history.** Free Spaces wipe their disk on restart. To keep scan history and the evidence log, turn on
+persistent storage in the Space settings and add the variable `BRAND_INTEL_DB=/data/brand_intel.db`.
 
 ## Configure
 
