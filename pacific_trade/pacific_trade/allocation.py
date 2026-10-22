@@ -16,11 +16,10 @@ Methods
 
 from __future__ import annotations
 
-import numpy as np
 import pandas as pd
 
 from .config import ALLOCATION_TYPES
-from .metrics import hhi
+from .metrics import concentration
 
 METHODS = ("capacity", "draft_drop")
 
@@ -78,16 +77,11 @@ def vessel_spof(edges: pd.DataFrame) -> pd.DataFrame:
     if edges.empty:
         return pd.DataFrame(columns=["port_key", "month", "hs6", "n_vessels", "vessel_hhi",
                                      "top_vessel", "top_vessel_share", "estimated"])
-    v = edges.groupby(["port_key", "month", "hs6", "vessel_key"], as_index=False)["est_wgt_kg"].sum()
-
-    def agg(g):
-        top = g.loc[g["est_wgt_kg"].idxmax()]
-        tot = g["est_wgt_kg"].sum()
-        return pd.Series({"n_vessels": len(g), "vessel_hhi": hhi(g["est_wgt_kg"]),
-                          "top_vessel": top["vessel_key"],
-                          "top_vessel_share": top["est_wgt_kg"] / tot if tot else np.nan})
-
-    out = v.groupby(["port_key", "month", "hs6"]).apply(agg, include_groups=False).reset_index()
+    keys = ["port_key", "month", "hs6"]
+    v = edges.groupby(keys + ["vessel_key"], as_index=False)["est_wgt_kg"].sum()
+    out = concentration(v, keys, "vessel_key", "est_wgt_kg")
+    out = out.rename(columns={"n": "n_vessels", "hhi": "vessel_hhi", "top": "top_vessel",
+                              "top_share": "top_vessel_share"}).drop(columns="total")
     out["estimated"] = True
     return out
 

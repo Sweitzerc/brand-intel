@@ -1,0 +1,673 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pacific Trade Dashboard</title>
+<style>
+:root {
+  color-scheme: light;
+  --page: #f9f9f7; --surface-1: #fcfcfb; --surface-2: #f3f2ee;
+  --text-primary: #0b0b0b; --text-secondary: #52514e; --text-muted: #898781;
+  --grid: #e1e0d9; --baseline: #c3c2b7; --border: rgba(11,11,11,0.10);
+  --series-1: #2a78d6; --series-2: #eb6834; --series-3: #1baf7a;
+  --series-1-soft: rgba(42,120,214,0.10);
+  --good: #0ca30c; --warning: #fab219; --critical: #d03b3b;
+  --banner-bg: #fff4e5; --banner-ink: #6b3b00; --model-bg: #f1eefc; --model-ink: #3a2d8f;
+}
+@media (prefers-color-scheme: dark) {
+  :root:where(:not([data-theme="light"])) {
+    color-scheme: dark;
+    --page: #0d0d0d; --surface-1: #1a1a19; --surface-2: #232321;
+    --text-primary: #f0efec; --text-secondary: #c3c2b7; --text-muted: #898781;
+    --grid: #2c2c2a; --baseline: #383835; --border: rgba(255,255,255,0.10);
+    --series-1: #3987e5; --series-2: #d95926; --series-3: #199e70;
+    --series-1-soft: rgba(57,135,229,0.12);
+    --banner-bg: #3a2a10; --banner-ink: #ffd99a; --model-bg: #25213f; --model-ink: #cfc8ff;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --page: #0d0d0d; --surface-1: #1a1a19; --surface-2: #232321;
+  --text-primary: #f0efec; --text-secondary: #c3c2b7; --text-muted: #898781;
+  --grid: #2c2c2a; --baseline: #383835; --border: rgba(255,255,255,0.10);
+  --series-1: #3987e5; --series-2: #d95926; --series-3: #199e70;
+  --series-1-soft: rgba(57,135,229,0.12);
+  --banner-bg: #3a2a10; --banner-ink: #ffd99a; --model-bg: #25213f; --model-ink: #cfc8ff;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--page); color: var(--text-primary);
+  font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+.wrap { max-width: 1240px; margin: 0 auto; padding: 24px 16px 48px; }
+header { display: flex; gap: 16px; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; }
+h1 { font-size: 22px; margin: 0 0 4px; font-weight: 650; letter-spacing: -0.01em; }
+h2 { font-size: 15px; margin: 0; font-weight: 600; }
+h3.section { font-size: 13px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-secondary);
+  margin: 32px 0 12px; font-weight: 600; }
+.sub { color: var(--text-secondary); margin: 0; }
+.muted { color: var(--text-muted); }
+button, select { font: inherit; color: var(--text-primary); background: var(--surface-1);
+  border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px; }
+button { cursor: pointer; }
+button:hover, select:hover { background: var(--surface-2); }
+button:focus-visible, select:focus-visible, [tabindex]:focus-visible { outline: 2px solid var(--series-1); outline-offset: 2px; }
+.banner { margin: 16px 0 0; padding: 10px 14px; border-radius: 10px; background: var(--banner-bg); color: var(--banner-ink);
+  font-weight: 500; }
+.filters { display: flex; flex-wrap: wrap; gap: 12px; align-items: end; margin: 20px 0 8px; }
+.filters label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--text-secondary); }
+.filters select { min-width: 140px; max-width: 280px; }
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-top: 16px; }
+.tile { background: var(--surface-1); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; }
+.tile .label { font-size: 12px; color: var(--text-secondary); }
+.tile .value { font-size: 24px; font-weight: 600; margin-top: 2px; }
+.tile .note { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+.tile.hero { grid-column: span 2; }
+.tile.hero .value { font-size: 48px; line-height: 1.1; }
+@media (max-width: 520px) { .tile.hero { grid-column: span 1; } .tile.hero .value { font-size: 36px; } }
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 520px), 1fr)); gap: 16px; }
+.card { background: var(--surface-1); border: 1px solid var(--border); border-radius: 12px; padding: 16px; min-width: 0; }
+.card-head { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; margin-bottom: 8px; }
+.card-head p { margin: 2px 0 0; color: var(--text-secondary); font-size: 13px; }
+.card-head button { font-size: 12px; padding: 4px 8px; flex: none; }
+.chart { width: 100%; min-height: 60px; }
+.chart svg { display: block; width: 100%; overflow: visible; }
+.legend { display: flex; flex-wrap: wrap; gap: 14px; font-size: 12px; color: var(--text-secondary); margin: 4px 0 8px; }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.legend i { display: inline-block; width: 12px; height: 12px; border-radius: 3px; }
+.legend i.line { height: 2px; border-radius: 1px; width: 14px; }
+.tablewrap { overflow-x: auto; max-height: 320px; overflow-y: auto; margin-top: 8px; }
+table { border-collapse: collapse; width: 100%; font-size: 12px; }
+th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--grid); white-space: nowrap; }
+th { color: var(--text-secondary); font-weight: 600; position: sticky; top: 0; background: var(--surface-1); }
+td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+.empty { color: var(--text-muted); padding: 24px 0; text-align: center; }
+.model { background: var(--model-bg); color: var(--model-ink); border-radius: 10px; padding: 10px 14px; margin-bottom: 12px; }
+.status { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-secondary); }
+.status svg { flex: none; }
+#tip { position: fixed; pointer-events: none; z-index: 10; background: var(--surface-1); color: var(--text-primary);
+  border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; font-size: 12px; box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+  display: none; min-width: 140px; max-width: 280px; }
+#tip .t { color: var(--text-secondary); margin-bottom: 4px; }
+#tip .r { display: flex; align-items: center; gap: 8px; justify-content: space-between; }
+#tip .r b { font-weight: 600; }
+#tip .k { display: inline-block; width: 12px; height: 2px; border-radius: 1px; margin-right: 6px; vertical-align: middle; }
+footer { margin-top: 32px; color: var(--text-secondary); font-size: 12.5px; }
+footer li { margin: 4px 0; }
+.mark { cursor: default; }
+.mark:hover, .mark:focus { opacity: 0.8; }
+@media (forced-colors: active) { .mark { stroke: CanvasText; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <h1>Pacific chip &amp; critical-mineral imports</h1>
+      <p class="sub">US Pacific ports · Census port-level trade, NOAA AIS port calls, UN Comtrade exporter context</p>
+      <p class="sub muted" id="generated"></p>
+    </div>
+    <button id="theme" type="button" aria-label="Toggle light or dark theme">Theme</button>
+  </header>
+  <div class="banner" id="demoBanner" hidden>SYNTHETIC DEMO DATA. These numbers are random and only show the layout. They are not results.</div>
+
+  <div class="filters" role="group" aria-label="Filters">
+    <label>From<select id="fFrom"></select></label>
+    <label>To<select id="fTo"></select></label>
+    <label>Commodity<select id="fGroup">
+      <option value="all">All in scope</option>
+      <option value="semiconductor">Semiconductors &amp; cable (HS 8541–8544)</option>
+      <option value="mineral">Critical minerals (HS 2609–2621, 2846)</option>
+    </select></label>
+    <label>HS6 line<select id="fHs6"></select></label>
+    <label>Port of unlading<select id="fPort"></select></label>
+    <button id="reset" type="button">Reset</button>
+  </div>
+
+  <div class="tiles" id="tiles"></div>
+
+  <h3 class="section">Trade (Census, observed)</h3>
+  <div class="grid">
+    <section class="card" id="cMode"></section>
+    <section class="card" id="cPorts"></section>
+    <section class="card" id="cOrigins"></section>
+    <section class="card" id="cMonthly"></section>
+  </div>
+
+  <h3 class="section">Port activity (AIS, observed)</h3>
+  <div class="grid">
+    <section class="card" id="cCalls"></section>
+    <section class="card" id="cDwell"></section>
+  </div>
+
+  <h3 class="section">Global supply (Comtrade, observed)</h3>
+  <div class="grid">
+    <section class="card" id="cGlobal"></section>
+  </div>
+
+  <h3 class="section">Vessel exposure (modelled)</h3>
+  <div class="model" id="modelNote"></div>
+  <div class="grid">
+    <section class="card" id="cExposure"></section>
+    <section class="card" id="cSpof"></section>
+  </div>
+
+  <footer>
+    <strong>How to read this</strong>
+    <ul>
+      <li>Census <em>origin</em> is the country where goods were made or mined, not the country they shipped from.</li>
+      <li>Census suppresses small cells. A missing value at a small port is not a zero.</li>
+      <li>AIS is coastal-only (land receivers). Calls count all cargo and tanker ships at the port, not only ships carrying these goods.</li>
+      <li>Guam is outside the Census customs territory and has no trade figures.</li>
+      <li>HHI (0–10,000): under 1,500 unconcentrated, 1,500–2,500 moderately concentrated, over 2,500 highly concentrated.</li>
+      <li>The vessel section is an allocation model. No source here records which ship carried which goods.</li>
+    </ul>
+  </footer>
+</div>
+<div id="tip" role="tooltip"></div>
+
+<script id="data" type="application/json">/*__DATA__*/{}</script>
+<script>
+(function () {
+"use strict";
+const D = JSON.parse(document.getElementById("data").textContent);
+const NS = "http://www.w3.org/2000/svg";
+
+// ---------- data ----------
+function rows(cols) {
+  const keys = Object.keys(cols); const n = keys.length ? cols[keys[0]].length : 0; const out = new Array(n);
+  for (let i = 0; i < n; i++) { const o = {}; for (const k of keys) o[k] = cols[k][i]; out[i] = o; }
+  return out;
+}
+const FACT = rows(D.fact), AIS = rows(D.ais), GLOBAL = rows(D.global), EDGES = rows(D.edges), UNALLOC = rows(D.unalloc);
+const MONTHS = [...new Set(FACT.map(r => r.month).concat(AIS.map(r => r.month)))].sort();
+const groupOf = hs => { const h = String(hs).slice(0, 2); return h === "85" ? "semiconductor" : "mineral"; };
+const GROUP_LABEL = { semiconductor: "Semiconductors & cable", mineral: "Critical minerals" };
+const hsLabel = hs => { const d = D.hs4[String(hs).slice(0, 4)]; return d ? `${hs} · ${d}` : String(hs); };
+const portName = p => (D.ports[p] && D.ports[p].name) || p;
+const monthLabel = m => { const [y, mm] = m.split("-"); return new Date(Date.UTC(+y, +mm - 1, 1)).toLocaleString("en-US", { month: "short", timeZone: "UTC" }) + " " + y.slice(2); };
+
+// ---------- formatting ----------
+function compact(v) {
+  const a = Math.abs(v);
+  if (a >= 1e9) return (v / 1e9).toFixed(a >= 1e10 ? 0 : 1) + "B";
+  if (a >= 1e6) return (v / 1e6).toFixed(a >= 1e7 ? 0 : 1) + "M";
+  if (a >= 1e3) return (v / 1e3).toFixed(a >= 1e4 ? 0 : 1) + "K";
+  return String(Math.round(v));
+}
+const usd = v => v == null || isNaN(v) ? "–" : "$" + compact(v);
+const tonnes = v => v == null || isNaN(v) ? "–" : compact(v / 1000) + " t";
+const pct = v => v == null || isNaN(v) ? "–" : (v * 100).toFixed(v < 0.1 ? 1 : 0) + "%";
+const num = v => v == null || isNaN(v) ? "–" : compact(v);
+const hrs = v => v == null || isNaN(v) ? "–" : v.toFixed(1) + " h";
+const full = v => v == null || isNaN(v) ? "–" : Math.round(v).toLocaleString("en-US");
+function hhi(values) {
+  const t = values.reduce((a, b) => a + Math.max(b, 0), 0); if (!t) return NaN;
+  return values.reduce((a, b) => a + Math.pow(Math.max(b, 0) / t, 2), 0) * 10000;
+}
+function hhiStatus(h) {
+  if (isNaN(h)) return null;
+  if (h > 2500) return { key: "critical", label: "Highly concentrated" };
+  if (h >= 1500) return { key: "warning", label: "Moderately concentrated" };
+  return { key: "good", label: "Unconcentrated" };
+}
+function statusEl(st) {
+  const span = document.createElement("span"); span.className = "status";
+  if (!st) { span.textContent = "–"; return span; }
+  const svg = el("svg", { width: 12, height: 12, viewBox: "0 0 12 12", "aria-hidden": "true" });
+  const color = `var(--${st.key})`;
+  if (st.key === "good") svg.appendChild(el("circle", { cx: 6, cy: 6, r: 5, fill: color }));
+  else if (st.key === "warning") svg.appendChild(el("path", { d: "M6 1 L11 11 L1 11 Z", fill: color }));
+  else svg.appendChild(el("rect", { x: 1.5, y: 1.5, width: 9, height: 9, transform: "rotate(45 6 6)", fill: color }));
+  span.appendChild(svg); span.appendChild(document.createTextNode(st.label));
+  return span;
+}
+function sumBy(list, key, valFn) {
+  const m = new Map();
+  for (const r of list) { const k = key(r); m.set(k, (m.get(k) || 0) + valFn(r)); }
+  return m;
+}
+
+// ---------- state & filters ----------
+const S = { from: MONTHS[0], to: MONTHS[MONTHS.length - 1], group: "all", hs6: "all", port: "all" };
+const $ = id => document.getElementById(id);
+function opt(sel, value, text) { const o = document.createElement("option"); o.value = value; o.textContent = text; sel.appendChild(o); }
+function initFilters() {
+  for (const id of ["fFrom", "fTo"]) for (const m of MONTHS) opt($(id), m, monthLabel(m));
+  $("fFrom").value = S.from; $("fTo").value = S.to;
+  const pSel = $("fPort"); opt(pSel, "all", "All ports");
+  const byRegion = {};
+  for (const p of [...new Set(FACT.map(r => r.port))].sort()) {
+    const reg = (D.ports[p] && D.ports[p].region) || "other"; (byRegion[reg] = byRegion[reg] || []).push(p);
+  }
+  for (const [reg, ps] of Object.entries(byRegion)) {
+    const g = document.createElement("optgroup"); g.label = reg.replace("_", " ").replace(/\b\w/g, c => c.toUpperCase());
+    for (const p of ps) opt(g, p, `${portName(p)} (${p})`);
+    pSel.appendChild(g);
+  }
+  fillHs6();
+  $("fFrom").onchange = e => { S.from = e.target.value; if (S.from > S.to) { S.to = S.from; $("fTo").value = S.to; } update(); };
+  $("fTo").onchange = e => { S.to = e.target.value; if (S.to < S.from) { S.from = S.to; $("fFrom").value = S.from; } update(); };
+  $("fGroup").onchange = e => { S.group = e.target.value; S.hs6 = "all"; fillHs6(); update(); };
+  $("fHs6").onchange = e => { S.hs6 = e.target.value; update(); };
+  $("fPort").onchange = e => { S.port = e.target.value; update(); };
+  $("reset").onclick = () => {
+    Object.assign(S, { from: MONTHS[0], to: MONTHS[MONTHS.length - 1], group: "all", hs6: "all", port: "all" });
+    $("fFrom").value = S.from; $("fTo").value = S.to; $("fGroup").value = "all"; $("fPort").value = "all"; fillHs6(); update();
+  };
+}
+function fillHs6() {
+  const sel = $("fHs6"); sel.textContent = ""; opt(sel, "all", "All HS6 lines");
+  const codes = [...new Set(FACT.map(r => r.hs6).concat(GLOBAL.map(r => r.hs6)))].filter(h => S.group === "all" || groupOf(h) === S.group).sort();
+  for (const h of codes) opt(sel, h, hsLabel(h));
+  sel.value = S.hs6;
+}
+const inMonths = m => m >= S.from && m <= S.to;
+const inComm = hs => (S.group === "all" || groupOf(hs) === S.group) && (S.hs6 === "all" || hs === S.hs6);
+const inPort = p => S.port === "all" || p === S.port;
+
+// ---------- SVG helpers ----------
+function el(tag, attrs, text) {
+  const n = document.createElementNS(NS, tag);
+  for (const k in attrs || {}) n.setAttribute(k, attrs[k]);
+  if (text != null) n.textContent = text;
+  return n;
+}
+function niceTicks(max, count) {
+  if (!(max > 0)) return [0, 1];
+  const raw = max / count, mag = Math.pow(10, Math.floor(Math.log10(raw)));
+  const step = [1, 2, 2.5, 5, 10].map(s => s * mag).find(s => s >= raw);
+  const ticks = []; for (let v = 0; v <= max + step * 0.001; v += step) ticks.push(v);
+  if (ticks[ticks.length - 1] < max) ticks.push(ticks[ticks.length - 1] + step);
+  return ticks;
+}
+// Bar with a 4px rounded data-end and a square baseline end.
+function hBarPath(x, y, w, h, r) {
+  r = Math.min(r, w, h / 2);
+  if (w <= 0) return "";
+  return `M${x},${y} h${w - r} a${r},${r} 0 0 1 ${r},${r} v${h - 2 * r} a${r},${r} 0 0 1 ${-r},${r} h${-(w - r)} Z`;
+}
+const tip = $("tip");
+function showTip(evt, title, lines) {
+  tip.textContent = "";
+  const t = document.createElement("div"); t.className = "t"; t.textContent = title; tip.appendChild(t);
+  for (const [label, value, color] of lines) {
+    const r = document.createElement("div"); r.className = "r";
+    const l = document.createElement("span");
+    if (color) { const k = document.createElement("i"); k.className = "k"; k.style.background = color; l.appendChild(k); }
+    l.appendChild(document.createTextNode(label));
+    const b = document.createElement("b"); b.textContent = value;
+    r.appendChild(b); r.appendChild(l); tip.appendChild(r);
+  }
+  tip.style.display = "block";
+  let x, y;
+  if (evt.clientX != null && evt.type !== "focus") { x = evt.clientX; y = evt.clientY; }
+  else { const bb = evt.target.getBoundingClientRect(); x = bb.right; y = bb.top; }
+  const tw = tip.offsetWidth, th = tip.offsetHeight;
+  tip.style.left = Math.min(window.innerWidth - tw - 8, x + 14) + "px";
+  tip.style.top = Math.max(8, Math.min(window.innerHeight - th - 8, y - th - 10)) + "px";
+}
+function hideTip() { tip.style.display = "none"; }
+function hover(node, title, lines) {
+  node.setAttribute("tabindex", "0"); node.classList.add("mark");
+  node.setAttribute("aria-label", title + ": " + lines.map(l => `${l[0]} ${l[1]}`).join(", "));
+  const show = e => showTip(e, title, lines);
+  node.addEventListener("pointermove", show); node.addEventListener("focus", show);
+  node.addEventListener("pointerleave", hideTip); node.addEventListener("blur", hideTip);
+}
+
+// ---------- card scaffolding ----------
+function card(id, title, subtitle) {
+  const c = $(id); c.textContent = "";
+  const head = document.createElement("div"); head.className = "card-head";
+  const txt = document.createElement("div");
+  const h = document.createElement("h2"); h.textContent = title; txt.appendChild(h);
+  if (subtitle) { const p = document.createElement("p"); p.textContent = subtitle; txt.appendChild(p); }
+  const btn = document.createElement("button"); btn.type = "button"; btn.textContent = "Table";
+  head.appendChild(txt); head.appendChild(btn); c.appendChild(head);
+  const legend = document.createElement("div"); legend.className = "legend"; c.appendChild(legend);
+  const chart = document.createElement("div"); chart.className = "chart"; c.appendChild(chart);
+  const tw = document.createElement("div"); tw.className = "tablewrap"; tw.hidden = true; c.appendChild(tw);
+  btn.onclick = () => { tw.hidden = !tw.hidden; btn.textContent = tw.hidden ? "Table" : "Hide table"; };
+  return { c, legend, chart, table: tw };
+}
+function legend(box, items) {
+  for (const it of items) {
+    const s = document.createElement("span"); const i = document.createElement("i");
+    if (it.line) i.className = "line"; i.style.background = it.color;
+    s.appendChild(i); s.appendChild(document.createTextNode(it.label)); box.appendChild(s);
+  }
+}
+function table(box, cols, data) {
+  const t = document.createElement("table"); const thead = document.createElement("thead"); const tr = document.createElement("tr");
+  for (const c of cols) { const th = document.createElement("th"); th.textContent = c.label; if (c.num) th.className = "num"; tr.appendChild(th); }
+  thead.appendChild(tr); t.appendChild(thead);
+  const tb = document.createElement("tbody");
+  for (const r of data) {
+    const row = document.createElement("tr");
+    for (const c of cols) {
+      const td = document.createElement("td"); if (c.num) td.className = "num";
+      const v = c.fmt ? c.fmt(r[c.key], r) : r[c.key];
+      if (v instanceof Node) td.appendChild(v); else td.textContent = v == null ? "–" : v;
+      row.appendChild(td);
+    }
+    tb.appendChild(row);
+  }
+  t.appendChild(tb); box.appendChild(t);
+}
+function empty(box, msg) { const d = document.createElement("div"); d.className = "empty"; d.textContent = msg; box.appendChild(d); }
+const width = box => Math.max(280, box.clientWidth || 520);
+function fitLabels(svg, maxW) {
+  for (const t of svg.querySelectorAll("text[text-anchor=end].lbl")) {
+    const fullText = t.textContent; let s = fullText;
+    while (t.getComputedTextLength() > maxW && s.length > 4) { s = s.slice(0, -2); t.textContent = s + "…"; }
+    if (s !== fullText) t.appendChild(el("title", {}, fullText));
+  }
+}
+
+// ---------- chart: horizontal bars ----------
+function hbars(box, data, o) {
+  if (!data.length) return empty(box, o.empty || "No data for this filter.");
+  const W = width(box), labelW = Math.min(o.labelMax || 170, W * 0.34), valW = 56, band = 30, barH = 18;
+  const H = data.length * band + (o.ref ? 22 : 6);
+  const max = Math.max(o.ref || 0, ...data.map(d => d.value)) || 1;
+  const x0 = labelW, x1 = W - valW, sx = v => x0 + (x1 - x0) * v / max;
+  const svg = el("svg", { viewBox: `0 0 ${W} ${H}`, height: H, role: "img", "aria-label": o.aria || "" });
+  svg.appendChild(el("line", { x1: x0, x2: x0, y1: 0, y2: data.length * band, stroke: "var(--baseline)" }));
+  data.forEach((d, i) => {
+    const y = i * band + (band - barH) / 2;
+    const label = el("text", { x: x0 - 8, y: y + barH / 2 + 4, "text-anchor": "end", "font-size": 12, fill: "var(--text-secondary)", class: "lbl" }, d.label);
+    svg.appendChild(label);
+    const w = Math.max(0, sx(d.value) - x0);
+    const g = el("g", {});
+    g.appendChild(el("rect", { x: 0, y: i * band, width: W, height: band, fill: "transparent" })); // hit area > mark
+    g.appendChild(el("path", { d: hBarPath(x0, y, Math.max(w, 1), barH, 4), fill: d.color || "var(--series-1)",
+      opacity: d.dim ? 0.35 : 1 }));
+    g.appendChild(el("text", { x: x0 + w + 6, y: y + barH / 2 + 4, "font-size": 12, fill: "var(--text-primary)" }, o.fmt(d.value)));
+    hover(g, d.tipTitle || d.label, d.tip || [[o.valueLabel || "Value", o.fmt(d.value)]]);
+    svg.appendChild(g);
+  });
+  if (o.ref) {
+    const x = sx(o.ref);
+    svg.appendChild(el("line", { x1: x, x2: x, y1: 0, y2: data.length * band, stroke: "var(--text-muted)", "stroke-width": 1 }));
+    svg.appendChild(el("text", { x, y: data.length * band + 16, "text-anchor": "middle", "font-size": 11, fill: "var(--text-muted)" }, o.refLabel));
+  }
+  box.appendChild(svg);
+  fitLabels(svg, labelW - 12);
+}
+
+// ---------- chart: 100% stacked bars ----------
+function stacked(box, data, series) {
+  if (!data.length) return empty(box, "No data for this filter.");
+  const W = width(box), labelW = Math.min(170, W * 0.34), band = 34, barH = 22, gap = 2;
+  const H = data.length * band + 24;
+  const x0 = labelW, x1 = W - 4, span = x1 - x0;
+  const svg = el("svg", { viewBox: `0 0 ${W} ${H}`, height: H, role: "img", "aria-label": "Share of import value by transport mode" });
+  for (const t of [0, 0.25, 0.5, 0.75, 1]) {
+    const x = x0 + span * t;
+    svg.appendChild(el("line", { x1: x, x2: x, y1: 0, y2: data.length * band, stroke: "var(--grid)" }));
+    svg.appendChild(el("text", { x, y: data.length * band + 16, "text-anchor": "middle", "font-size": 11, fill: "var(--text-muted)" }, (t * 100) + "%"));
+  }
+  box.appendChild(svg);
+  data.forEach((d, i) => {
+    const y = i * band + (band - barH) / 2;
+    svg.appendChild(el("text", { x: x0 - 8, y: y + barH / 2 + 4, "text-anchor": "end", "font-size": 12, fill: "var(--text-secondary)", class: "lbl" }, d.label));
+    const total = d.parts.reduce((a, b) => a + b, 0) || 1;
+    let x = x0; const nz = d.parts.map((p, k) => p > 0 ? k : -1).filter(k => k >= 0); const last = nz[nz.length - 1];
+    d.parts.forEach((p, k) => {
+      if (p <= 0) return;
+      const w = span * p / total - (k === last ? 0 : gap);
+      const g = el("g", {});
+      g.appendChild(el(k === last ? "path" : "rect", k === last
+        ? { d: hBarPath(x, y, Math.max(w, 1), barH, 4), fill: series[k].color }
+        : { x, y, width: Math.max(w, 1), height: barH, fill: series[k].color }));
+      const share = p / total, txt = pct(share);
+      const t = el("text", { x: x + w / 2, y: y + barH / 2 + 4, "text-anchor": "middle", "font-size": 11, fill: "#ffffff", "font-weight": 600 }, txt);
+      g.appendChild(t);
+      svg.appendChild(g);
+      if (t.getComputedTextLength() + 12 > w) t.remove(); // no clipped labels
+      hover(g, `${d.label} · ${series[k].label}`, d.parts.map((pp, kk) => [series[kk].label, `${pct(pp / total)} · ${usd(pp)}`, series[kk].color]));
+      x += w + gap;
+    });
+  });
+  fitLabels(svg, labelW - 12);
+}
+
+// ---------- chart: lines with crosshair ----------
+function lines(box, xs, series, o) {
+  if (!xs.length || series.every(s => s.values.every(v => v == null))) return empty(box, o.empty || "No data for this filter.");
+  const W = width(box), H = 210, m = { l: 48, r: o.endLabel ? 64 : 16, t: 10, b: 26 };
+  const max = Math.max(...series.flatMap(s => s.values.filter(v => v != null)));
+  const ticks = niceTicks(max, 4), top = ticks[ticks.length - 1] || 1;
+  const sx = i => m.l + (xs.length === 1 ? (W - m.l - m.r) / 2 : (W - m.l - m.r) * i / (xs.length - 1));
+  const sy = v => m.t + (H - m.t - m.b) * (1 - v / top);
+  const svg = el("svg", { viewBox: `0 0 ${W} ${H}`, height: H, role: "img", "aria-label": o.aria || "" });
+  for (const t of ticks) {
+    svg.appendChild(el("line", { x1: m.l, x2: W - m.r, y1: sy(t), y2: sy(t), stroke: t === 0 ? "var(--baseline)" : "var(--grid)" }));
+    svg.appendChild(el("text", { x: m.l - 6, y: sy(t) + 4, "text-anchor": "end", "font-size": 11, fill: "var(--text-muted)", "font-variant-numeric": "tabular-nums" }, o.axisFmt(t)));
+  }
+  const every = Math.ceil(xs.length / Math.max(2, Math.floor((W - m.l - m.r) / 64)));
+  xs.forEach((x, i) => { if (i % every === 0 || i === xs.length - 1)
+    svg.appendChild(el("text", { x: sx(i), y: H - 6, "text-anchor": "middle", "font-size": 11, fill: "var(--text-muted)" }, monthLabel(x))); });
+  for (const s of series) {
+    const pts = s.values.map((v, i) => v == null ? null : [sx(i), sy(v)]);
+    let d = "", pen = false;
+    for (const p of pts) { if (!p) { pen = false; continue; } d += (pen ? "L" : "M") + p[0] + "," + p[1]; pen = true; }
+    if (series.length === 1 && pts.every(Boolean) && pts.length > 1)
+      svg.appendChild(el("path", { d: d + `L${pts[pts.length - 1][0]},${sy(0)}L${pts[0][0]},${sy(0)}Z`, fill: "var(--series-1-soft)" }));
+    svg.appendChild(el("path", { d, fill: "none", stroke: s.color, "stroke-width": 2, "stroke-linejoin": "round", "stroke-linecap": "round" }));
+    const li = pts.map(Boolean).lastIndexOf(true);
+    if (li >= 0) {
+      svg.appendChild(el("circle", { cx: pts[li][0], cy: pts[li][1], r: 4, fill: s.color, stroke: "var(--surface-1)", "stroke-width": 2 }));
+      if (o.endLabel) svg.appendChild(el("text", { x: pts[li][0] + 8, y: pts[li][1] + 4, "font-size": 12, fill: "var(--text-primary)" }, o.fmt(s.values[li])));
+    }
+  }
+  const cross = el("line", { y1: m.t, y2: H - m.b, stroke: "var(--text-muted)", "stroke-width": 1, visibility: "hidden" });
+  svg.appendChild(cross);
+  const dots = series.map(s => { const c = el("circle", { r: 4, fill: s.color, stroke: "var(--surface-1)", "stroke-width": 2, visibility: "hidden" }); svg.appendChild(c); return c; });
+  const hit = el("rect", { x: m.l - 8, y: 0, width: W - m.l - m.r + 16, height: H, fill: "transparent", tabindex: 0,
+    "aria-label": "Chart values; use the table view for every value" });
+  let idx = xs.length - 1;
+  const at = (i, e) => {
+    idx = Math.max(0, Math.min(xs.length - 1, i));
+    cross.setAttribute("x1", sx(idx)); cross.setAttribute("x2", sx(idx)); cross.setAttribute("visibility", "visible");
+    series.forEach((s, k) => { const v = s.values[idx];
+      dots[k].setAttribute("visibility", v == null ? "hidden" : "visible");
+      if (v != null) { dots[k].setAttribute("cx", sx(idx)); dots[k].setAttribute("cy", sy(v)); } });
+    showTip(e, monthLabel(xs[idx]), series.map(s => [s.label, o.fmt(s.values[idx]), s.color]));
+  };
+  hit.addEventListener("pointermove", e => {
+    const bb = svg.getBoundingClientRect(), px = (e.clientX - bb.left) * W / bb.width;
+    const i = xs.length === 1 ? 0 : Math.round((px - m.l) / ((W - m.l - m.r) / (xs.length - 1)));
+    at(i, e);
+  });
+  hit.addEventListener("keydown", e => { if (e.key === "ArrowRight") at(idx + 1, e); if (e.key === "ArrowLeft") at(idx - 1, e); });
+  hit.addEventListener("focus", e => at(idx, e));
+  const off = () => { hideTip(); cross.setAttribute("visibility", "hidden"); dots.forEach(d => d.setAttribute("visibility", "hidden")); };
+  hit.addEventListener("pointerleave", off); hit.addEventListener("blur", off);
+  svg.appendChild(hit);
+  box.appendChild(svg);
+}
+
+// ---------- views ----------
+function tile(box, label, value, note, cls) {
+  const t = document.createElement("div"); t.className = "tile" + (cls ? " " + cls : "");
+  const l = document.createElement("div"); l.className = "label"; l.textContent = label;
+  const v = document.createElement("div"); v.className = "value"; v.textContent = value;
+  t.appendChild(l); t.appendChild(v);
+  if (note) { const n = document.createElement("div"); n.className = "note"; if (note instanceof Node) n.appendChild(note); else n.textContent = note; t.appendChild(n); }
+  box.appendChild(t);
+}
+
+function update() {
+  hideTip();
+  const F = FACT.filter(r => inMonths(r.month) && inComm(r.hs6) && inPort(r.port));
+  const F_allPorts = FACT.filter(r => inMonths(r.month) && inComm(r.hs6));
+  const A = AIS.filter(r => inMonths(r.month) && inPort(r.port) && D.ports[r.port]);
+  const E = EDGES.filter(r => inMonths(r.month) && inComm(r.hs6) && inPort(r.port));
+  const sum = (list, k) => list.reduce((a, r) => a + (r[k] || 0), 0);
+
+  // tiles
+  const T = $("tiles"); T.textContent = "";
+  const gen = sum(F, "gen"), ves = sum(F, "ves");
+  const byCty = sumBy(F, r => r.cty, r => r.ves || 0);
+  const h = hhi([...byCty.values()]);
+  tile(T, "Vessel import value", usd(ves), `${monthLabel(S.from)} – ${monthLabel(S.to)}`, "hero");
+  tile(T, "All-mode import value", usd(gen), "Census general imports");
+  tile(T, "Arrives by vessel", pct(gen ? ves / gen : NaN), "Share of value");
+  tile(T, "Vessel weight", tonnes(sum(F, "vesKg")), "Shipping weight");
+  tile(T, "Supplier concentration", isNaN(h) ? "–" : full(h), statusEl(hhiStatus(h)));
+  tile(T, "Cargo ship calls", A.length ? full(sum(A, "cargoCalls")) : "–", "AIS, all cargo (types 70–79)");
+
+  // mode split
+  {
+    const k = card("cMode", "How it arrives", "Share of import value by transport mode");
+    const series = [{ label: "Vessel", color: "var(--series-1)" }, { label: "Air", color: "var(--series-2)" }, { label: "Other / unassigned", color: "var(--series-3)" }];
+    legend(k.legend, series);
+    const key = S.hs6 !== "all" ? (r => r.hs6) : (S.group !== "all" ? (r => r.hs6.slice(0, 4)) : (r => r.group));
+    const lab = S.hs6 !== "all" ? hsLabel : (S.group !== "all" ? (c => `${c} · ${D.hs4[c] || ""}`) : (g => GROUP_LABEL[g] || g));
+    const agg = new Map();
+    for (const r of F) { const a = agg.get(key(r)) || { gen: 0, ves: 0, air: 0 }; a.gen += r.gen || 0; a.ves += r.ves || 0; a.air += r.air || 0; agg.set(key(r), a); }
+    const data = [...agg.entries()].sort((a, b) => b[1].gen - a[1].gen).map(([c, a]) => ({
+      label: lab(c), parts: [a.ves, a.air, Math.max(0, a.gen - a.ves - a.air)], gen: a.gen }));
+    stacked(k.chart, data, series);
+    table(k.table, [{ key: "label", label: "Group" }, { key: "gen", label: "Total", num: true, fmt: usd },
+      { key: "v", label: "Vessel", num: true, fmt: (_, r) => pct(r.parts[0] / r.gen) }, { key: "a", label: "Air", num: true, fmt: (_, r) => pct(r.parts[1] / r.gen) }], data);
+  }
+
+  // ports
+  {
+    const k = card("cPorts", "Vessel import value by port", "Port of unlading. The selected port is highlighted.");
+    const byPort = new Map();
+    for (const r of F_allPorts) {
+      const a = byPort.get(r.port) || { ves: 0, gen: 0, cty: new Map() };
+      a.ves += r.ves || 0; a.gen += r.gen || 0; a.cty.set(r.ctyName || r.cty, (a.cty.get(r.ctyName || r.cty) || 0) + (r.ves || 0));
+      byPort.set(r.port, a);
+    }
+    const data = [...byPort.entries()].filter(([, a]) => a.ves > 0).sort((a, b) => b[1].ves - a[1].ves).map(([p, a]) => {
+      const top = [...a.cty.entries()].sort((x, y) => y[1] - x[1])[0];
+      const hh = hhi([...a.cty.values()]);
+      return { label: portName(p), port: p, value: a.ves, dim: S.port !== "all" && p !== S.port, gen: a.gen, hhi: hh, top: top ? titleCase(top[0]) : "–",
+        tip: [["Vessel value", usd(a.ves)], ["Vessel share", pct(a.ves / a.gen)], ["Supplier HHI", full(hh)], ["Top origin", top ? `${titleCase(top[0])} (${pct(top[1] / a.ves)})` : "–"]] };
+    });
+    hbars(k.chart, data, { fmt: usd, aria: "Vessel import value by port" });
+    table(k.table, [{ key: "label", label: "Port" }, { key: "port", label: "Code" }, { key: "value", label: "Vessel value", num: true, fmt: usd },
+      { key: "gen", label: "All modes", num: true, fmt: usd }, { key: "hhi", label: "Supplier HHI", num: true, fmt: full }, { key: "top", label: "Top origin" }], data);
+  }
+
+  // origins
+  {
+    const k = card("cOrigins", "Where it comes from", "Country of origin (made or mined), vessel value");
+    const names = new Map(F.map(r => [r.cty, r.ctyName || r.cty]));
+    const list = [...byCty.entries()].filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]);
+    const total = list.reduce((a, b) => a + b[1], 0);
+    const topN = list.slice(0, 8).map(([c, v]) => ({ label: titleCase(names.get(c)), value: v, cty: c,
+      tip: [["Vessel value", usd(v)], ["Share", pct(v / total)]] }));
+    const rest = list.slice(8).reduce((a, b) => a + b[1], 0);
+    if (rest > 0) topN.push({ label: `Other (${list.length - 8})`, value: rest, tip: [["Vessel value", usd(rest)], ["Share", pct(rest / total)]] });
+    hbars(k.chart, topN, { fmt: usd, aria: "Vessel import value by country of origin" });
+    table(k.table, [{ key: "name", label: "Origin" }, { key: "c", label: "Census code" }, { key: "v", label: "Vessel value", num: true, fmt: usd }, { key: "s", label: "Share", num: true, fmt: pct }],
+      list.map(([c, v]) => ({ name: titleCase(names.get(c)), c, v, s: v / total })));
+  }
+
+  // monthly
+  {
+    const k = card("cMonthly", "Vessel import value by month", null);
+    const xs = MONTHS.filter(inMonths);
+    const by = sumBy(F, r => r.month, r => r.ves || 0);
+    const vals = xs.map(m => by.has(m) ? by.get(m) : null);
+    lines(k.chart, xs, [{ label: "Vessel value", values: vals, color: "var(--series-1)" }], { fmt: usd, axisFmt: usd, endLabel: true, aria: "Vessel import value by month" });
+    table(k.table, [{ key: "m", label: "Month", fmt: monthLabel }, { key: "v", label: "Vessel value", num: true, fmt: usd }], xs.map((m, i) => ({ m, v: vals[i] })));
+  }
+
+  // AIS calls and dwell
+  {
+    const xs = MONTHS.filter(inMonths);
+    const by = new Map();
+    for (const r of A) { const a = by.get(r.month) || { calls: 0, cargo: 0, dw: 0, wt: 0, n: 0 };
+      a.calls += r.calls || 0; a.cargo += r.cargoCalls || 0; a.dw += (r.dwell || 0) * (r.calls || 0); a.wt += (r.wait || 0) * (r.calls || 0); a.n += r.calls || 0; by.set(r.month, a); }
+    const scope = S.port === "all" ? "All crosswalk ports" : portName(S.port);
+    const k = card("cCalls", "Cargo ship calls per month", `${scope}. Counts every cargo ship, whatever it carried.`);
+    const cargo = xs.map(m => by.has(m) ? by.get(m).cargo : null);
+    lines(k.chart, xs, [{ label: "Cargo calls", values: cargo, color: "var(--series-1)" }], { fmt: v => v == null ? "–" : full(v), axisFmt: num, endLabel: true,
+      empty: "No AIS port calls for this filter. Run `portcalls` to add them.", aria: "Cargo ship calls per month" });
+    table(k.table, [{ key: "m", label: "Month", fmt: monthLabel }, { key: "c", label: "Cargo calls", num: true, fmt: full }, { key: "a", label: "All calls", num: true, fmt: full }],
+      xs.map(m => ({ m, c: by.has(m) ? by.get(m).cargo : null, a: by.has(m) ? by.get(m).calls : null })));
+
+    const k2 = card("cDwell", "Time in port and waiting at anchor", `${scope}. Mean hours per call.`);
+    const ser = [{ label: "Moored at berth", color: "var(--series-1)", values: xs.map(m => by.has(m) && by.get(m).n ? by.get(m).dw / by.get(m).n : null) },
+                 { label: "Waiting at anchor", color: "var(--series-2)", values: xs.map(m => by.has(m) && by.get(m).n ? by.get(m).wt / by.get(m).n : null) }];
+    legend(k2.legend, ser.map(s => ({ label: s.label, color: s.color, line: true })));
+    lines(k2.chart, xs, ser, { fmt: hrs, axisFmt: v => v + " h", empty: "No AIS port calls for this filter.", aria: "Mean hours moored and waiting at anchor" });
+    table(k2.table, [{ key: "m", label: "Month", fmt: monthLabel }, { key: "d", label: "Moored (h)", num: true, fmt: hrs }, { key: "w", label: "Anchor wait (h)", num: true, fmt: hrs }],
+      xs.map((m, i) => ({ m, d: ser[0].values[i], w: ser[1].values[i] })));
+  }
+
+  // global exporter concentration
+  {
+    const k = card("cGlobal", "How concentrated world exports are", "Exporter HHI per HS6 line, latest year. The line marks 2,500 (highly concentrated).");
+    const latest = new Map();
+    for (const r of GLOBAL) if (inComm(r.hs6) && (!latest.has(r.hs6) || r.year > latest.get(r.hs6).year)) latest.set(r.hs6, r);
+    const data = [...latest.values()].sort((a, b) => b.hhi - a.hhi).slice(0, 15).map(r => {
+      const top = D.m49[String(r.top)] || `M49 ${r.top}`;
+      return { label: hsLabel(r.hs6), value: r.hhi, hs6: r.hs6, top, topShare: r.topShare, year: r.year, n: r.n,
+        tip: [["HHI", full(r.hhi)], ["Top exporter", `${top} (${pct(r.topShare)})`], ["Exporters", full(r.n)], ["Year", String(r.year)]] };
+    });
+    hbars(k.chart, data, { fmt: full, ref: 2500, labelMax: 300, refLabel: "2,500", empty: "No Comtrade data. Run `comtrade-pull` to add it.", aria: "World exporter HHI by HS6" });
+    table(k.table, [{ key: "label", label: "HS6" }, { key: "value", label: "HHI", num: true, fmt: full }, { key: "s", label: "Level", fmt: (_, r) => statusEl(hhiStatus(r.value)) },
+      { key: "top", label: "Top exporter" }, { key: "topShare", label: "Top share", num: true, fmt: pct }, { key: "year", label: "Year" }], data);
+  }
+
+  // modelled exposure
+  {
+    const un = UNALLOC.filter(r => inMonths(r.month) && inComm(r.hs6) && inPort(r.port));
+    const note = $("modelNote"); note.textContent = "";
+    note.appendChild(document.createTextNode(
+      `MODELLED, not observed. Each port-month's Census vessel value is split across the dry-cargo ships that called there, in proportion to ship size (${D.meta.method} method). ` +
+      `No source here records what any ship carried. ` + (un.length ? `${un.length} port-month-HS6 cells (${usd(sum(un, "val"))}) had no detected call and stay unallocated.` : "")));
+
+    const byV = new Map();
+    for (const r of E) { const a = byV.get(r.v) || { val: 0, kg: 0, ports: new Set() }; a.val += r.val || 0; a.kg += r.kg || 0; a.ports.add(r.port); byV.set(r.v, a); }
+    const total = [...byV.values()].reduce((a, b) => a + b.val, 0);
+    const vname = v => (D.vessels[v] && D.vessels[v].name) || v;
+    const k = card("cExposure", "Estimated value carried, by vessel", "Top 10 ships under the allocation model");
+    const data = [...byV.entries()].sort((a, b) => b[1].val - a[1].val).slice(0, 10).map(([v, a]) => ({
+      label: titleCase(vname(v)), value: a.val, v,
+      tip: [["Est. value", usd(a.val)], ["Est. weight", tonnes(a.kg)], ["Share of allocated", pct(a.val / total)], ["Ports", [...a.ports].map(portName).join(", ")], ["ID", v]] }));
+    hbars(k.chart, data, { fmt: usd, empty: "No allocation yet. Run `portcalls` and `build`.", aria: "Estimated value carried by vessel" });
+    table(k.table, [{ key: "label", label: "Vessel" }, { key: "v", label: "ID" }, { key: "value", label: "Est. value", num: true, fmt: usd }], data);
+
+    const k2 = card("cSpof", "Single-ship dependence", "Port × HS6 cells where one ship carries the largest estimated share");
+    const cells = new Map();
+    for (const r of E) { const key = r.port + "|" + r.hs6; const c = cells.get(key) || new Map(); c.set(r.v, (c.get(r.v) || 0) + (r.val || 0)); cells.set(key, c); }
+    const spof = [...cells.entries()].map(([key, c]) => {
+      const [port, hs6] = key.split("|"); const vals = [...c.entries()].sort((a, b) => b[1] - a[1]); const tot = vals.reduce((a, b) => a + b[1], 0);
+      return { port: portName(port), hs6: hsLabel(hs6), ships: vals.length, top: titleCase(vname(vals[0][0])), share: tot ? vals[0][1] / tot : NaN, tot };
+    }).filter(r => r.tot > 0).sort((a, b) => b.share - a.share || b.tot - a.tot).slice(0, 25);
+    k2.table.hidden = false; k2.c.querySelector(".card-head button").remove(); k2.chart.hidden = true; k2.legend.hidden = true;
+    if (!spof.length) empty(k2.table, "No allocation yet.");
+    else table(k2.table, [{ key: "port", label: "Port" }, { key: "hs6", label: "HS6" }, { key: "ships", label: "Ships", num: true },
+      { key: "top", label: "Largest ship" }, { key: "share", label: "Its share", num: true, fmt: pct }, { key: "tot", label: "Est. value", num: true, fmt: usd }], spof);
+  }
+}
+function titleCase(s) { return s == null ? "–" : String(s).toLowerCase().replace(/\b[a-z]/g, c => c.toUpperCase()); }
+
+// ---------- boot ----------
+$("generated").textContent = `Generated ${D.meta.generated}`;
+if (D.meta.demo) { $("demoBanner").hidden = false; document.title = "Pacific Trade Dashboard (demo)"; }
+$("theme").onclick = () => {
+  const root = document.documentElement;
+  const dark = root.dataset.theme ? root.dataset.theme === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
+  root.dataset.theme = dark ? "light" : "dark";
+  try { localStorage.setItem("pt-theme", root.dataset.theme); } catch (e) {}
+};
+try { const t = localStorage.getItem("pt-theme"); if (t) document.documentElement.dataset.theme = t; } catch (e) {}
+if (!MONTHS.length) { $("tiles").textContent = "No data in this build."; return; }
+initFilters();
+update();
+// Re-render on width changes only (height changes come from our own renders).
+let rt, lastW = document.querySelector(".wrap").clientWidth;
+new ResizeObserver(([e]) => { const w = Math.round(e.contentRect.width); if (w === lastW) return; lastW = w; clearTimeout(rt); rt = setTimeout(update, 120); }).observe(document.querySelector(".wrap"));
+})();
+</script>
+</body>
+</html>

@@ -24,5 +24,8 @@ build-backend = "setuptools.build_meta"
 [tool.setuptools]
 packages = ["pacific_trade"]
 
+[tool.setuptools.package-data]
+pacific_trade = ["*.html"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]

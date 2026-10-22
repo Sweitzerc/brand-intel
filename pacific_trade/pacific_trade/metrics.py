@@ -22,14 +22,14 @@ def concentration(df: pd.DataFrame, by: list[str], over: str, value: str) -> pd.
     d = d[d[value] > 0]
     if d.empty:
         return pd.DataFrame(columns=by + ["hhi", "n", "top", "top_share", "total"])
-
-    def agg(g):
-        total = g[value].sum()
-        top = g.loc[g[value].idxmax()]
-        return pd.Series({"hhi": hhi(g[value]), "n": len(g), "top": top[over],
-                          "top_share": top[value] / total, "total": total})
-
-    return d.groupby(by).apply(agg, include_groups=False).reset_index()
+    g = d.groupby(by)[value]
+    d = d.assign(total=g.transform("sum"))
+    d["share"] = d[value] / d["total"]
+    out = d.assign(sq=d["share"] ** 2).groupby(by).agg(hhi=("sq", "sum"), n=(over, "size"), total=("total", "first"))
+    out["hhi"] *= 10_000
+    top = d.loc[d.groupby(by)[value].idxmax()].set_index(by)
+    out["top"], out["top_share"] = top[over], top["share"]
+    return out[["hhi", "n", "top", "top_share", "total"]].reset_index()
 
 
 def origin_hhi(census: pd.DataFrame, value="VES_VAL_MO", per_month=False) -> pd.DataFrame:

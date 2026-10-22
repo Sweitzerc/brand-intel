@@ -1,7 +1,7 @@
 import pandas as pd
 
 from pacific_trade import ais, cli, config
-from conftest import census_rows, track
+from conftest import track
 from test_model import CENSUS, HNL
 
 

@@ -36,6 +36,8 @@ python -m pacific_trade portcalls --start 2026-04-01 --end 2026-06-30
 python -m pacific_trade build --csv                                 # --method draft_drop for the sensitivity run
 ```
 
+To preview the dashboard without any keys or downloads, run `python -m pacific_trade demo`. It writes `data/out/dashboard.html` built from **synthetic** data, and both the page and the report carry a demo banner.
+
 Every step can be re-run safely. AIS days that are already filtered get skipped, and Census and Comtrade responses are cached under `data/cache/`. The cache key leaves out the API key, so re-runs don't spend API quota.
 
 **AIS cost:** each day is a 200–300 MB `.zst` file. It is streamed and filtered without being written to disk (about 25 s/day according to the recon), and only cargo and tanker rows (types 70–89) inside the Hawaii, West Coast and Guam/CNMI boxes are kept. A quarter is about 20 GB of download. For ≤2024 data the legacy zip has to be downloaded to a temp file before it can be read. Both schemas are normalised to the 2025 snake_case schema.
@@ -55,6 +57,21 @@ Every step can be re-run safely. AIS days that are already filtered get skipped,
 | `est_vessel_spof`, `est_vessel_exposure` | **Modelled** share on the largest single vessel, and value carried per vessel |
 | `est_unallocated` | Census tonnage in port-months where AIS saw no eligible call |
 | `report.md` | Summary of the above |
+| `dashboard.html` | Interactive dashboard (see below) |
+
+## Dashboard
+
+`build` writes `data/out/dashboard.html`, a single self-contained file with no external scripts or fonts. It opens offline, can be emailed, or can be hosted as a static page. Filters for month range, commodity group, HS6 line and port re-aggregate the embedded tables in the browser. Every chart has a table view, and the page supports light and dark themes and phone-width screens.
+
+| Section | Shows |
+|---|---|
+| Headline tiles | Vessel import value, all-mode value, share arriving by vessel, vessel weight, supplier HHI, AIS cargo calls |
+| Trade (Census) | Transport-mode split, vessel value by port, countries of origin, monthly trend |
+| Port activity (AIS) | Cargo calls per month; mean hours moored and waiting at anchor |
+| Global supply (Comtrade) | World exporter HHI per HS6 against the 2,500 line |
+| Vessel exposure (modelled) | Estimated value per ship and single-ship dependence, under a "MODELLED, not observed" banner |
+
+The dashboard embeds the tables it uses, so anyone who receives the file can see those numbers. Treat it like the underlying data when you share it.
 
 ## Method notes
 

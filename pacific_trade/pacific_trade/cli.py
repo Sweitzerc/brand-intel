@@ -7,7 +7,8 @@ Typical run (one quarter, Hawaii + West Coast):
   python -m pacific_trade census-pull --start 2026-04 --end 2026-06
   python -m pacific_trade comtrade-pull --year 2025 --months 202604 202605 202606
   python -m pacific_trade portcalls --start 2026-04-01 --end 2026-06-30
-  python -m pacific_trade build
+  python -m pacific_trade build            # tables + report.md + dashboard.html
+  python -m pacific_trade demo             # synthetic data, to preview the dashboard
 """
 
 from __future__ import annotations
@@ -21,7 +22,8 @@ from pathlib import Path
 
 import pandas as pd
 
-from . import ais, allocation, census, comtrade, crosswalk, fusion, http, metrics, portcalls, report
+from . import ais, build, census, comtrade, crosswalk, dashboard, demo, http, portcalls, report
+from .allocation import METHODS
 from .config import ALL_HS4, WPI_URL, data_dir
 
 log = logging.getLogger("pacific_trade")
@@ -119,40 +121,33 @@ def _read_opt(name):
     return pd.read_parquet(p) if p.exists() else None
 
 
+def _write_outputs(tables, *, method, csv=False, demo=False):
+    for name, df in tables.items():
+        df.to_parquet(_out(f"{name}.parquet"), index=False)
+        if csv:
+            df.to_csv(_out(f"{name}.csv"), index=False)
+    _out("report.md").write_text(report.render(tables, method=method))
+    html = dashboard.render(tables, crosswalk.load_ports(), crosswalk.load_countries(), method=method, demo=demo)
+    _out("dashboard.html").write_text(html)
+    print(f"Wrote {len(tables)} tables, {_out('report.md')} and {_out('dashboard.html')}")
+
+
 def cmd_build(a):
     cen = _read_opt("census_porths.parquet")
     if cen is None:
         sys.exit("census_porths.parquet missing: run `census-pull` first.")
-    countries = crosswalk.load_countries()
-    pm, calls, reg = _read_opt("port_month_ais.parquet"), _read_opt("port_calls.parquet"), _read_opt("vessel_registry.parquet")
-    world, us = _read_opt("comtrade_world_exports.parquet"), _read_opt("comtrade_us_imports.parquet")
+    tables = build.build_tables(
+        cen, crosswalk.load_countries(), port_month=_read_opt("port_month_ais.parquet"),
+        calls=_read_opt("port_calls.parquet"), registry=_read_opt("vessel_registry.parquet"),
+        world=_read_opt("comtrade_world_exports.parquet"), us_imports=_read_opt("comtrade_us_imports.parquet"),
+        census_national=_read_opt("census_porths_national.parquet"), method=a.method)
+    _write_outputs(tables, method=a.method, csv=a.csv)
 
-    es = metrics.exporter_share(world) if world is not None else None
-    gh = metrics.global_exporter_hhi(world) if world is not None else None
-    fact = fusion.build_fact(cen, pm, countries, es, gh)
-    tables = {
-        "fact_port_month_hs6_origin": fact,
-        "origin_hhi": metrics.origin_hhi(cen),
-        "port_hhi": metrics.port_hhi(cen),
-        "mode_split": metrics.mode_split(cen),
-    }
-    if gh is not None:
-        tables["global_exporter_hhi"] = gh
-    nat = _read_opt("census_porths_national.parquet")
-    if us is not None and nat is not None:
-        tables["census_vs_comtrade"] = metrics.census_vs_comtrade(nat, us, countries)
-    if calls is not None and reg is not None:
-        edges, unalloc = allocation.allocate(cen, calls, reg, method=a.method)
-        tables.update({"est_vessel_edges": edges, "est_unallocated": unalloc,
-                       "est_vessel_spof": allocation.vessel_spof(edges),
-                       "est_vessel_exposure": allocation.vessel_exposure(edges)})
-    for name, df in tables.items():
-        df.to_parquet(_out(f"{name}.parquet"), index=False)
-        if a.csv:
-            df.to_csv(_out(f"{name}.csv"), index=False)
-    md = report.render(tables, method=a.method)
-    _out("report.md").write_text(md)
-    print(f"Wrote {len(tables)} tables and {_out('report.md')}")
+
+def cmd_demo(a):
+    tables = demo.demo_tables(seed=a.seed, method=a.method)
+    _write_outputs(tables, method=a.method, demo=True)
+    print("These are SYNTHETIC demo numbers for previewing the dashboard, not results.")
 
 
 def main(argv=None):
@@ -195,9 +190,14 @@ def main(argv=None):
     s.set_defaults(fn=cmd_portcalls)
 
     s = sub.add_parser("build", help="Fuse, compute metrics, run the allocation model, write report.md")
-    s.add_argument("--method", choices=allocation.METHODS, default="capacity")
+    s.add_argument("--method", choices=METHODS, default="capacity")
     s.add_argument("--csv", action="store_true", help="Also write CSV copies")
     s.set_defaults(fn=cmd_build)
+
+    s = sub.add_parser("demo", help="Write SYNTHETIC demo outputs (incl. dashboard.html) to preview the layout")
+    s.add_argument("--seed", type=int, default=7)
+    s.add_argument("--method", choices=METHODS, default="capacity")
+    s.set_defaults(fn=cmd_demo)
 
     a = p.parse_args(argv)
     logging.basicConfig(level=logging.INFO if a.verbose else logging.WARNING, format="%(levelname)s %(message)s")
