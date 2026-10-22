@@ -1,0 +1,8 @@
+gradio>=5.0
+feedparser>=6.0
+requests>=2.31
+pyyaml>=6.0
+plotly>=5.20
+# AI models (optional - remove these two lines, or set BRAND_INTEL_LITE=1, for keyword-only mode)
+transformers>=4.40
+torch>=2.2

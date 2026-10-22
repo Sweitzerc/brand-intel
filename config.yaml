@@ -1,0 +1,29 @@
+# Brand Intel configuration. Edit this file, then restart the app.
+
+brand: "Canes Galore"
+
+# Your own sites plus competitors / suspected copycats. Used by the
+# Site Network tab to find sites that share tracking IDs.
+domains:
+  - canesgalore.com
+
+competitors:
+  - "Fashionable Canes"
+  - "HurryCane"
+
+# SEC EDGAR asks every client to identify itself with a contact email.
+# Leave blank to send a generic User-Agent (EDGAR may then refuse requests).
+contact_email: ""
+
+# Topic buckets for classifying mentions. With the AI model enabled these
+# labels are scored zero-shot; otherwise the keywords are matched.
+topics:
+  Product quality: [quality, sturdy, broke, broken, durable, flimsy, well made, cheap]
+  Shipping & delivery: [shipping, delivery, arrived, package, late, lost, tracking]
+  Price & value: [price, cost, expensive, affordable, deal, discount, sale, value]
+  Customer service: [service, support, refund, return, exchange, rude, helpful]
+  Style & design: [style, design, stylish, beautiful, color, fashion, look, elegant]
+  Health & mobility: [mobility, walking, balance, injury, recovery, arthritis, senior, fall]
+
+# Top-level domains checked when generating lookalike domains.
+tlds: [com, net, org, co, shop, store, us]
