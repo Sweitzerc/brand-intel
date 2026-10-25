@@ -22,6 +22,9 @@ CREATE TABLE IF NOT EXISTS items (
     scan_id INTEGER, title TEXT, url TEXT, source TEXT, platform TEXT,
     published TEXT, engagement INTEGER, score REAL, topics TEXT
 );
+CREATE TABLE IF NOT EXISTS lookalike_domains (
+    domain TEXT, lookalike TEXT, first_seen TEXT, PRIMARY KEY (domain, lookalike)
+);
 CREATE TABLE IF NOT EXISTS evidence (
     id INTEGER PRIMARY KEY, captured_at TEXT, url TEXT, title TEXT,
     sha256 TEXT, wayback_url TEXT, note TEXT
@@ -63,6 +66,32 @@ def history(query: str) -> list[tuple[str, float, int]]:
             "SELECT ran_at, avg_score, n_items FROM scans WHERE lower(query)=lower(?) ORDER BY ran_at",
             (query,),
         ).fetchall()
+
+
+def known_urls(query: str) -> set[str]:
+    """Every item URL already stored for this query, from any earlier scan."""
+    with connect() as conn:
+        rows = conn.execute(
+            "SELECT DISTINCT i.url FROM items i JOIN scans s ON s.id = i.scan_id WHERE lower(s.query)=lower(?)",
+            (query,),
+        ).fetchall()
+    return {r[0] for r in rows}
+
+
+def record_domains(domain: str, registered: set[str]) -> set[str]:
+    """Store registered lookalikes and return the ones not seen before.
+
+    The first run for a domain only records a baseline, so it returns nothing:
+    domains that already existed shouldn't all arrive as "new" alerts.
+    """
+    now = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    with connect() as conn:
+        seen = {r[0] for r in conn.execute(
+            "SELECT lookalike FROM lookalike_domains WHERE domain=?", (domain,))}
+        # An empty-string row marks "baseline taken", even if nothing was registered yet.
+        conn.executemany("INSERT OR IGNORE INTO lookalike_domains VALUES (?,?,?)",
+                         [(domain, d, now) for d in registered | {""}])
+    return registered - seen if seen else set()
 
 
 def save_evidence(rec: dict) -> None:

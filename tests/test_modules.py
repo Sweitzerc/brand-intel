@@ -105,3 +105,22 @@ def test_app_handlers(tmp_path, monkeypatch):
     assert fig is not None
     variants, domains = app.do_lookalikes("Canes Galore", "https://canesgalore.com/", False)
     assert "canesgalore" in variants and domains
+
+
+def test_lookalike_baseline_then_new(tmp_path, monkeypatch):
+    monkeypatch.setenv("BRAND_INTEL_DB", str(tmp_path / "t.db"))
+    assert storage.record_domains("x.com", set()) == set()          # baseline, nothing registered
+    assert storage.record_domains("x.com", {"xx.com"}) == {"xx.com"}  # newly registered
+    assert storage.record_domains("x.com", {"xx.com"}) == set()       # already reported
+
+
+def test_monitor_reports_only_new_negatives(tmp_path, monkeypatch):
+    from brand_intel import monitor
+    monkeypatch.setenv("BRAND_INTEL_DB", str(tmp_path / "t.db"))
+    monkeypatch.setattr(pipeline, "collect_all", lambda q, s, l: (news.parse(RSS, 10), []))
+    monkeypatch.setattr(monitor, "load_config", lambda: {"brand": "Canes Galore", "alerts": {"lookalikes": False}})
+    sent = []
+    monkeypatch.setattr(monitor, "send_email", lambda subject, body: sent.append(body))
+    first = monitor.run()
+    assert "arrived broken" in first and len(sent) == 1
+    assert monitor.run() == "Nothing new." and len(sent) == 1

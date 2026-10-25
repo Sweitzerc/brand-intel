@@ -36,6 +36,16 @@ python app.py            # open http://127.0.0.1:7860
 **Lite mode.** Run `BRAND_INTEL_LITE=1 python app.py` to skip the AI models and use fast keyword scoring
 instead. Lite mode starts instantly and runs on small machines.
 
+## Run it on a Raspberry Pi (always on, daily email alerts)
+
+```bash
+git clone https://github.com/Sweitzerc/brand-intel.git
+cd brand-intel && bash pi/install.sh
+```
+
+The full beginner guide is in [docs/raspberry-pi.md](docs/raspberry-pi.md). It covers first boot, email
+alerts, and opening the dashboard away from home.
+
 ## Host it free on Hugging Face (auto-updating)
 
 Do this once. After that, every change merged into `main` on GitHub updates the dashboard automatically.
@@ -75,9 +85,11 @@ brand_intel/
   collectors/        news.py, reddit.py, hackernews.py   -> list[Item]
   analyzers/         sentiment.py, topics.py, conversation.py
   investigators/     lookalikes.py, site_network.py, sec.py, archive.py
+  monitor.py         scheduled scan + email alerts
   storage.py         SQLite: scan history + evidence log
   charts.py          Plotly figures
 app.py               Gradio dashboard (one tab per module)
+pi/install.sh        Raspberry Pi installer (services + daily timer)
 tests/               offline tests (pytest)
 ```
 

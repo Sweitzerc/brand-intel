@@ -16,6 +16,7 @@ Run locally with `python app.py`, or deploy free as a Hugging Face Space.
 """
 
 import csv
+import os
 import tempfile
 
 import gradio as gr
@@ -256,4 +257,7 @@ with gr.Blocks(title="Brand Intel") as demo:
 
 
 if __name__ == "__main__":
-    demo.launch()
+    # On a shared network (e.g. the Raspberry Pi setup) set BRAND_INTEL_PASSWORD
+    # to require a login: username "admin" and that password.
+    password = os.environ.get("BRAND_INTEL_PASSWORD")
+    demo.launch(auth=("admin", password) if password else None)
