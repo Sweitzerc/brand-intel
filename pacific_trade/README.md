@@ -76,9 +76,9 @@ The dashboard embeds the tables it uses, so anyone who receives the file can see
 
 ## Method notes
 
-- **Port calls:** the vessel is inside a port geofence (circle around the WPI coordinate, `crosswalks/ports.csv` radius) and accumulates at least 2 h at `sog ≤ 0.5 kn`. A silence over 6 h splits a visit. Calls cut off at the start or end of the date range are flagged `censored`. Where LA and Long Beach geofences overlap, the call goes to the nearest port centre. Anchorage wait is slow time spent within 25 km of the port, outside the berth fence, in the 72 h before arrival.
+- **Port calls:** the vessel is inside a port geofence (circle around the WPI coordinate, `pacific_trade/crosswalks/ports.csv` radius) and accumulates at least 2 h at `sog ≤ 0.5 kn`. A silence over 6 h splits a visit. Calls cut off at the start or end of the date range are flagged `censored`. Where LA and Long Beach geofences overlap, the call goes to the nearest port centre. Anchorage wait is slow time spent within 25 km of the port, outside the berth fence, in the 72 h before arrival.
 - **Allocation (`build --method`):** port-month `VES_WGT_MO`/`VES_VAL_MO` is split across dry-cargo (type 70–79) calls in proportion to `length × width × arrival draft` (`capacity`), or to the draft drop at berth (`draft_drop`, falling back to capacity × the median drop ratio). Missing dimensions are filled with the port-month median. Tankers are excluded.
-- **Joins:** Census `PORT` = port of unlading ↔ crosswalk `schedule_d`. Census `CTY_CODE` is **country of origin**, not the country the goods were shipped from. It maps to Comtrade M49 through `crosswalks/countries.csv` (Taiwan = 490).
+- **Joins:** Census `PORT` = port of unlading ↔ crosswalk `schedule_d`. Census `CTY_CODE` is **country of origin**, not the country the goods were shipped from. It maps to Comtrade M49 through `pacific_trade/crosswalks/countries.csv` (Taiwan = 490).
 - **HHI** uses the 0–10,000 scale.
 
 ## Red flags
@@ -94,16 +94,16 @@ The dashboard embeds the tables it uses, so anyone who receives the file can see
 | SANC-VESSEL | Sanctions & export controls | AIS vessel matches a list by IMO/MMSI (or name, weaker) | AIS + `lists-fetch` |
 | SANC-IDENTITY | Sanctions & export controls | Identity manipulation: shared MMSI, bad IMO check digit, flag/name changes | AIS |
 | SANC-DARK | Sanctions & export controls | AIS silence inside receiver coverage while the ship moved | AIS |
-| SANC-COUNTRY | Sanctions & export controls | Origin under comprehensive sanctions, on a FATF list, or high Basel AML score | `crosswalks/country_risk.csv` |
-| FL-DOL-GOODS | Forced labour | Good and origin on the DOL child/forced labour list | `crosswalks/dol_goods_hs.csv` |
-| FL-TIP | Forced labour | Origin ranked Tier 3 in the TIP report | `crosswalks/country_risk.csv` |
+| SANC-COUNTRY | Sanctions & export controls | Origin under comprehensive sanctions, on a FATF list, or high Basel AML score | `pacific_trade/crosswalks/country_risk.csv` |
+| FL-DOL-GOODS | Forced labour | Good and origin on the DOL child/forced labour list | `pacific_trade/crosswalks/dol_goods_hs.csv` |
+| FL-TIP | Forced labour | Origin ranked Tier 3 in the TIP report | `pacific_trade/crosswalks/country_risk.csv` |
 
 Flags roll up per entity (trade flow, trade lane, origin country, vessel) as `1 - Π(1 - score)`, with repeats of one check counted once, into `red_flag_entities`.
 
 **Reference data you maintain:**
 - `python -m pacific_trade lists-fetch` downloads the OFAC SDN list and the US Consolidated Screening List (which includes the BIS Entity List). Add `--opensanctions` for the OpenSanctions consolidated file (EU, UK, UN and more); it is free for non-commercial use and needs a licence for commercial use. Put any other list, such as the DHS UFLPA Entity List, in `data/ref/lists/custom/` as a CSV with a `name` column. The download URLs were not reachable from the environment this was built in, so check them on the first run.
-- `crosswalks/country_risk.csv` ships empty on purpose. Fill it from the current FATF lists, the Basel AML Index, OFAC programmes and the State Department TIP report, and record the `as_of` date. Ratings change several times a year.
-- `crosswalks/dol_goods_hs.csv` maps a few DOL-listed goods to HS prefixes and is marked `verified=0`. Check it against the current DOL list.
+- `pacific_trade/crosswalks/country_risk.csv` ships empty on purpose. Fill it from the current FATF lists, the Basel AML Index, OFAC programmes and the State Department TIP report, and record the `as_of` date. Ratings change several times a year.
+- `pacific_trade/crosswalks/dol_goods_hs.csv` maps a few DOL-listed goods to HS prefixes and is marked `verified=0`. Check it against the current DOL list.
 
 **Screening names.** Census and Comtrade carry no company names. If you have importer, supplier or owner names (from bills of lading, a client list, a corporate registry), screen them with `python -m pacific_trade screen names.csv`. Matching is fuzzy, so every hit needs a human check against the official list.
 

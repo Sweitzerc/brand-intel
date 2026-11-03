@@ -60,12 +60,13 @@ WPI_URL = "https://msi.nga.mil/api/publications/download?type=view&key=16920959/
 COMTRADE_USA = 842  # M49 code Comtrade uses for the United States
 
 # ---- Paths & keys -------------------------------------------------------------
-PKG_ROOT = Path(__file__).resolve().parent.parent
-CROSSWALK_DIR = PKG_ROOT / "crosswalks"
+# Reference tables ship inside the package; point PACIFIC_TRADE_CROSSWALKS at your own copy to edit them
+# without touching the installed files.
+CROSSWALK_DIR = Path(os.environ.get("PACIFIC_TRADE_CROSSWALKS", Path(__file__).resolve().parent / "crosswalks"))
 
 
 def data_dir() -> Path:
-    d = Path(os.environ.get("PACIFIC_TRADE_DATA", PKG_ROOT / "data"))
+    d = Path(os.environ.get("PACIFIC_TRADE_DATA", Path.cwd() / "data"))
     d.mkdir(parents=True, exist_ok=True)
     return d
 
