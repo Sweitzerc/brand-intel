@@ -1,0 +1,597 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Pacific Trade Intelligence Pipeline: System Design</title>
+<style>
+@page { size: Letter; margin: 0.7in 0.75in 0.75in; }
+:root {
+  --ink: #0b0b0b; --ink2: #52514e; --muted: #898781; --rule: #e1e0d9; --wash: #f3f2ee;
+  --blue: #2a78d6; --blue-soft: #e8f1fc; --orange: #eb6834; --orange-soft: #fdeee7;
+  --aqua: #1baf7a; --aqua-soft: #e6f6ef; --violet: #6250d6; --violet-soft: #efedfb;
+}
+* { box-sizing: border-box; }
+html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+body { margin: 0; color: var(--ink); background: #fff; font: 10.2pt/1.5 system-ui, -apple-system, "Segoe UI", "Helvetica Neue", Arial, sans-serif; }
+h1 { font-size: 26pt; line-height: 1.15; margin: 0 0 8px; letter-spacing: -0.01em; }
+h2 { font-size: 15pt; margin: 0 0 10px; padding-top: 4px; letter-spacing: -0.005em; }
+h3 { font-size: 11pt; margin: 18px 0 6px; }
+p { margin: 0 0 8px; }
+ul, ol { margin: 0 0 10px; padding-left: 20px; }
+li { margin: 2px 0; }
+code { font: 8.8pt/1.4 ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace; background: var(--wash); padding: 1px 4px; border-radius: 3px; }
+.section { margin-top: 26px; }
+.cover + .section { break-before: page; margin-top: 0; }
+h2, h3 { break-after: avoid; }
+.box, figure, .callout, .formula { break-inside: avoid; }
+.keep { break-inside: avoid; }
+.lead { font-size: 11.5pt; color: var(--ink2); }
+.muted { color: var(--muted); }
+table { width: 100%; border-collapse: collapse; margin: 6px 0 14px; font-size: 8.9pt; break-inside: auto; }
+th, td { text-align: left; vertical-align: top; padding: 5px 7px; border-bottom: 1px solid var(--rule); }
+th { color: var(--ink2); font-weight: 600; border-bottom: 1.5px solid #c3c2b7; }
+tr { break-inside: avoid; }
+tr:first-child, tr:nth-child(2) { break-after: avoid; }
+td code { font-size: 8.2pt; }
+.callout { border-radius: 8px; padding: 10px 14px; margin: 10px 0 14px; break-inside: avoid; }
+.callout.warn { background: var(--orange-soft); }
+.callout.info { background: var(--blue-soft); }
+.callout.model { background: var(--violet-soft); }
+.callout b:first-child { display: block; margin-bottom: 2px; }
+figure { margin: 10px 0 16px; break-inside: avoid; }
+figcaption { font-size: 8.8pt; color: var(--ink2); margin-top: 6px; }
+svg text { font-family: system-ui, -apple-system, "Segoe UI", "Helvetica Neue", Arial, sans-serif; }
+.cover { height: 9.2in; display: flex; flex-direction: column; justify-content: space-between; }
+.cover .top { padding-top: 1.4in; }
+.cover .kicker { font-size: 10pt; letter-spacing: 0.12em; text-transform: uppercase; color: var(--blue); font-weight: 600; margin-bottom: 14px; }
+.meta { display: grid; grid-template-columns: 130px 1fr; gap: 4px 12px; font-size: 9.5pt; border-top: 1.5px solid var(--ink); padding-top: 12px; }
+.meta div:nth-child(odd) { color: var(--ink2); }
+.toc { margin-top: 28px; font-size: 10pt; columns: 2; column-gap: 32px; }
+.toc li { break-inside: avoid; }
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.box { border: 1px solid var(--rule); border-radius: 8px; padding: 10px 12px; break-inside: avoid; }
+.box h3 { margin-top: 0; }
+.formula { font: 9.5pt/1.4 ui-monospace, Menlo, Consolas, monospace; background: var(--wash); padding: 8px 12px; border-radius: 6px; margin: 6px 0 10px; }
+</style>
+</head>
+<body>
+
+<!-- ============================================================ COVER -->
+<div class="cover">
+  <div class="top">
+    <div class="kicker">System design</div>
+    <h1>Pacific Trade Intelligence Pipeline</h1>
+    <p class="lead">How public shipping, trade and sanctions data are combined to describe semiconductor and critical-mineral imports through US Pacific ports, and to raise documented red flags for trade-based money laundering, sanctions evasion and forced labour.</p>
+    <ol class="toc">
+      <li>Purpose and scope</li>
+      <li>Architecture</li>
+      <li>Data sources</li>
+      <li>Data model and joins</li>
+      <li>Pipeline stages and commands</li>
+      <li>Analytics</li>
+      <li>Red-flag framework</li>
+      <li>Outputs and dashboard</li>
+      <li>Reference data and governance</li>
+      <li>Operations</li>
+      <li>Limitations and guardrails</li>
+      <li>Code layout, testing and roadmap</li>
+    </ol>
+  </div>
+  <div class="meta">
+    <div>Version</div><div>0.3 (branch <code>pacific-trade-pipeline</code>)</div>
+    <div>Date</div><div>3 November 2026</div>
+    <div>Status</div><div>Built and tested on synthetic data; not yet run on live data</div>
+    <div>Language</div><div>Python 3.10+ (pandas, NumPy, PyArrow, requests, zstandard)</div>
+    <div>Source basis</div><div>Data-source recon of 19 October 2026 and the code as of this date</div>
+  </div>
+</div>
+
+<!-- ============================================================ 1 -->
+<div class="section">
+<h2>1. Purpose and scope</h2>
+<p>The pipeline answers three kinds of question about goods arriving by sea at US Pacific ports (Hawaii and the West Coast, with Guam as AIS-only context):</p>
+<ol>
+  <li><b>What arrives, from where, and how.</b> Value and weight by port of unlading, HS6 product line, country of origin and month, split by vessel, container and air.</li>
+  <li><b>How concentrated and exposed the flows are.</b> Supplier-country concentration per port, port concentration per product, global exporter concentration, port activity and congestion from ship positions, and a clearly labelled model of how much rides on individual ships.</li>
+  <li><b>Where the patterns look wrong.</b> A library of red-flag checks drawn from published typologies (FATF, OFAC, US Department of Labor and others), each one documented with its sources and its innocent explanations.</li>
+</ol>
+
+<h3>Commodities in scope</h3>
+<table>
+  <tr><th style="width:28%">Group</th><th style="width:22%">HS codes</th><th>Examples</th></tr>
+  <tr><td>Semiconductors and cable</td><td>8541, 8542, 8543, 8544</td><td>Diodes, transistors, LEDs and PV cells; integrated circuits; electrical machines n.e.s.; insulated wire and cable</td></tr>
+  <tr><td>Critical minerals</td><td>2609–2621, 2846</td><td>Tin, chromium, tungsten, molybdenum, titanium, niobium/tantalum ores; metal-bearing slags and residues; rare-earth compounds</td></tr>
+</table>
+
+<h3>Ports in scope</h3>
+<p>Census ports 3201 Honolulu (including Barbers Point, assumed), 3202 Hilo, 3203 Kahului, 3204 Nawiliwili–Port Allen, 3206 Kona, 2704 Los Angeles, 2709 Long Beach, 2809 San Francisco, 2811 Oakland, 3001 Seattle and 3002 Tacoma. Apra Harbor, Guam, appears in AIS only, because Guam is outside the Census customs territory.</p>
+
+<div class="callout warn">
+  <b>The central limitation</b>
+  No source in scope links a specific ship to a specific cargo. Census reports port × product × origin × month; AIS reports ship positions. The sources are joined at <b>port × month</b> and <b>origin country × HS6 × period</b> only. Anything said at ship level is an allocation model, and every red flag is a lead for review, never a finding.
+</div>
+
+<h3>Out of scope</h3>
+<ul>
+  <li>Bills of lading, manifests or any other shipment-level commercial data (CBP manifest data would close the ship-to-cargo gap, but it is not used).</li>
+  <li>Profiling private individuals. The entities analysed are trade flows, trade lanes, countries and vessels; company names enter only through the analyst-supplied <code>screen</code> command.</li>
+  <li>Satellite AIS. US coastal receivers only, so ocean legs are invisible.</li>
+</ul>
+</div>
+
+<!-- ============================================================ 2 -->
+<div class="section">
+<h2>2. Architecture</h2>
+<p>The system is a batch pipeline driven by a single command-line program. Each ingest command writes to a local data directory, every API response is cached on disk, and one <code>build</code> step turns whatever inputs are present into tables, a Markdown report and a self-contained HTML dashboard. Steps whose inputs are missing are skipped rather than failing the build.</p>
+
+<figure>
+<svg viewBox="0 0 720 560" width="100%" role="img" aria-label="Architecture: sources to ingest to local store to processing to outputs">
+  <defs>
+    <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#898781"/>
+    </marker>
+  </defs>
+  <!-- tier labels -->
+  <g font-size="9.5" font-weight="600" fill="#52514e" letter-spacing="0.06em">
+    <text x="0" y="24">SOURCES</text>
+    <text x="0" y="134">INGEST</text>
+    <text x="0" y="244">LOCAL STORE</text>
+    <text x="0" y="354">PROCESSING</text>
+    <text x="0" y="494">OUTPUTS</text>
+  </g>
+  <g font-size="10">
+  <!-- sources -->
+  <g>
+    <rect x="96" y="6" width="112" height="56" rx="7" fill="#e8f1fc"/>
+    <text x="152" y="28" text-anchor="middle" font-weight="600">NOAA AIS</text>
+    <text x="152" y="43" text-anchor="middle" fill="#52514e" font-size="8.5">daily ship positions</text>
+    <rect x="218" y="6" width="112" height="56" rx="7" fill="#e8f1fc"/>
+    <text x="274" y="28" text-anchor="middle" font-weight="600">Census API</text>
+    <text x="274" y="43" text-anchor="middle" fill="#52514e" font-size="8.5">port × HS6 × origin</text>
+    <rect x="340" y="6" width="112" height="56" rx="7" fill="#e8f1fc"/>
+    <text x="396" y="28" text-anchor="middle" font-weight="600">UN Comtrade</text>
+    <text x="396" y="43" text-anchor="middle" fill="#52514e" font-size="8.5">country × HS6</text>
+    <rect x="462" y="6" width="124" height="56" rx="7" fill="#e8f1fc"/>
+    <text x="524" y="24" text-anchor="middle" font-weight="600">Reference lists</text>
+    <text x="524" y="39" text-anchor="middle" fill="#52514e" font-size="8.5">WPI, OFAC SDN, US CSL,</text>
+    <text x="524" y="51" text-anchor="middle" fill="#52514e" font-size="8.5">OpenSanctions, custom</text>
+    <rect x="596" y="6" width="124" height="56" rx="7" fill="#f3f2ee"/>
+    <text x="658" y="24" text-anchor="middle" font-weight="600">Crosswalks</text>
+    <text x="658" y="39" text-anchor="middle" fill="#52514e" font-size="8.5">ports, countries, DOL</text>
+    <text x="658" y="51" text-anchor="middle" fill="#52514e" font-size="8.5">goods, country risk</text>
+  </g>
+  <!-- ingest -->
+  <g>
+    <rect x="96" y="116" width="112" height="40" rx="7" fill="#fff" stroke="#c3c2b7"/>
+    <text x="152" y="140" text-anchor="middle" font-family="ui-monospace,Menlo,monospace" font-size="9.5">ais-fetch</text>
+    <rect x="218" y="116" width="112" height="40" rx="7" fill="#fff" stroke="#c3c2b7"/>
+    <text x="274" y="140" text-anchor="middle" font-family="ui-monospace,Menlo,monospace" font-size="9.5">census-pull</text>
+    <rect x="340" y="116" width="112" height="40" rx="7" fill="#fff" stroke="#c3c2b7"/>
+    <text x="396" y="140" text-anchor="middle" font-family="ui-monospace,Menlo,monospace" font-size="9.5">comtrade-pull</text>
+    <rect x="462" y="116" width="124" height="40" rx="7" fill="#fff" stroke="#c3c2b7"/>
+    <text x="524" y="140" text-anchor="middle" font-family="ui-monospace,Menlo,monospace" font-size="9.5">wpi-fetch / lists-fetch</text>
+    <rect x="596" y="116" width="124" height="40" rx="7" fill="#fff" stroke="#c3c2b7" stroke-dasharray="0"/>
+    <text x="658" y="134" text-anchor="middle" font-size="9">shipped in package;</text>
+    <text x="658" y="146" text-anchor="middle" font-size="9">analyst edits</text>
+  </g>
+  <!-- store -->
+  <g>
+    <rect x="96" y="214" width="234" height="56" rx="7" fill="#f3f2ee"/>
+    <text x="213" y="236" text-anchor="middle" font-weight="600">data/ais/YYYY/*.parquet</text>
+    <text x="213" y="251" text-anchor="middle" fill="#52514e" font-size="8.5">Pacific boxes, cargo and tanker ships only</text>
+    <rect x="340" y="214" width="112" height="56" rx="7" fill="#f3f2ee"/>
+    <text x="396" y="236" text-anchor="middle" font-weight="600">data/cache</text>
+    <text x="396" y="251" text-anchor="middle" fill="#52514e" font-size="8.5">API JSON by query</text>
+    <rect x="462" y="214" width="258" height="56" rx="7" fill="#f3f2ee"/>
+    <text x="591" y="236" text-anchor="middle" font-weight="600">data/out/*.parquet  ·  data/ref</text>
+    <text x="591" y="251" text-anchor="middle" fill="#52514e" font-size="8.5">pulled tables, WPI and watchlists</text>
+  </g>
+  <!-- processing -->
+  <g>
+    <rect x="96" y="314" width="234" height="96" rx="7" fill="#e6f6ef"/>
+    <text x="213" y="336" text-anchor="middle" font-weight="600" font-family="ui-monospace,Menlo,monospace" font-size="10">portcalls</text>
+    <text x="213" y="354" text-anchor="middle" fill="#0b0b0b" font-size="9">vessel registry (MMSI→IMO)</text>
+    <text x="213" y="368" text-anchor="middle" fill="#0b0b0b" font-size="9">port calls, dwell, anchorage wait</text>
+    <text x="213" y="382" text-anchor="middle" fill="#0b0b0b" font-size="9">port × month stats</text>
+    <text x="213" y="396" text-anchor="middle" fill="#0b0b0b" font-size="9">identity history, dark gaps</text>
+    <rect x="340" y="314" width="380" height="96" rx="7" fill="#e6f6ef"/>
+    <text x="530" y="336" text-anchor="middle" font-weight="600" font-family="ui-monospace,Menlo,monospace" font-size="10">build</text>
+    <g font-size="9">
+      <rect x="352" y="346" width="84" height="52" rx="5" fill="#fff"/>
+      <text x="394" y="368" text-anchor="middle">fusion</text><text x="394" y="381" text-anchor="middle" fill="#52514e" font-size="8">fact table</text>
+      <rect x="444" y="346" width="84" height="52" rx="5" fill="#fff"/>
+      <text x="486" y="368" text-anchor="middle">metrics</text><text x="486" y="381" text-anchor="middle" fill="#52514e" font-size="8">HHI, mode split</text>
+      <rect x="536" y="346" width="84" height="52" rx="5" fill="#efedfb"/>
+      <text x="578" y="368" text-anchor="middle">allocation</text><text x="578" y="381" text-anchor="middle" fill="#52514e" font-size="8">MODELLED</text>
+      <rect x="628" y="346" width="84" height="52" rx="5" fill="#fdeee7"/>
+      <text x="670" y="368" text-anchor="middle">red flags</text><text x="670" y="381" text-anchor="middle" fill="#52514e" font-size="8">10 checks</text>
+    </g>
+  </g>
+  <!-- outputs -->
+  <g>
+    <rect x="96" y="470" width="234" height="56" rx="7" fill="#fff" stroke="#0b0b0b"/>
+    <text x="213" y="493" text-anchor="middle" font-weight="600">Parquet / CSV tables</text>
+    <text x="213" y="508" text-anchor="middle" fill="#52514e" font-size="8.5">for analysts and other tools</text>
+    <rect x="340" y="470" width="168" height="56" rx="7" fill="#fff" stroke="#0b0b0b"/>
+    <text x="424" y="493" text-anchor="middle" font-weight="600">report.md</text>
+    <text x="424" y="508" text-anchor="middle" fill="#52514e" font-size="8.5">summary tables</text>
+    <rect x="518" y="470" width="202" height="56" rx="7" fill="#fff" stroke="#0b0b0b"/>
+    <text x="619" y="493" text-anchor="middle" font-weight="600">dashboard.html</text>
+    <text x="619" y="508" text-anchor="middle" fill="#52514e" font-size="8.5">self-contained, filterable</text>
+  </g>
+  </g>
+  <!-- arrows -->
+  <g stroke="#898781" stroke-width="1.3" fill="none" marker-end="url(#ar)">
+    <path d="M152,62 V114"/><path d="M274,62 V114"/><path d="M396,62 V114"/><path d="M524,62 V114"/><path d="M658,62 V114"/>
+    <path d="M152,156 V212"/><path d="M274,156 C274,185 340,190 380,212"/><path d="M396,156 V212"/><path d="M274,156 C274,190 470,185 520,212"/>
+    <path d="M524,156 V212"/><path d="M396,156 C420,190 560,190 590,212"/>
+    <path d="M213,270 V312"/><path d="M591,270 V312"/><path d="M658,156 C700,200 712,260 700,312"/>
+    <path d="M330,362 H338"/>
+    <path d="M213,410 V468"/><path d="M450,410 V468"/><path d="M619,410 V468"/>
+  </g>
+</svg>
+<figcaption>Figure 1. Data flows top to bottom. Every box in the ingest row is a CLI command; <code>build</code> is the only step that produces outputs.</figcaption>
+</figure>
+
+<h3>Design principles</h3>
+<ul>
+  <li><b>Re-runnable and cheap to repeat.</b> Processed AIS days are skipped; Census and Comtrade responses are cached under <code>data/cache</code> keyed by query without the API key, so re-runs cost no quota.</li>
+  <li><b>Degrade, don't fail.</b> Missing inputs skip the dependent tables and checks, and the run log says which and why.</li>
+  <li><b>Observed vs modelled is explicit.</b> Modelled outputs carry an <code>est_</code> prefix and <code>estimated=True</code>; the dashboard puts them under a "MODELLED, not observed" banner.</li>
+  <li><b>Every judgement is documented next to the code that makes it.</b> Scope constants live in <code>config.py</code>; each red-flag check carries its question, method, sources and innocent explanations.</li>
+</ul>
+</div>
+
+<!-- ============================================================ 3 -->
+<div class="section">
+<h2>3. Data sources</h2>
+<table>
+  <tr><th style="width:15%">Source</th><th style="width:22%">Access</th><th style="width:14%">Auth and limits</th><th style="width:22%">Grain</th><th>Coverage and notes</th></tr>
+  <tr><td><b>NOAA Marine Cadastre AIS</b></td><td>Daily <code>.csv.zst</code> on the NOAA Azure blob (2025+); legacy daily <code>.zip</code> (≤2024)</td><td>None</td><td>Ship × position, about one per minute</td><td>2009 to 30 June 2026. US terrestrial receivers only (≈40–50 mi from shore); no satellite; Alaska removed after March 2021. ~200–300 MB compressed per day; schema changed in 2025.</td></tr>
+  <tr><td><b>Census International Trade API</b></td><td><code>imports/porths</code> (port × HS6) and <code>imports/hs</code> (district × HS10)</td><td>Free key, required</td><td>Port of unlading × HS6 × country of origin × month</td><td>2010 onward. Vessel, containerised and air value and weight. Disclosure suppression at small ports. Annual revisions with April data.</td></tr>
+  <tr><td><b>UN Comtrade</b></td><td><code>data/v1/get</code> (keyed) or keyless preview</td><td>Free key: 500 calls/day, 1 call/s</td><td>Reporter × partner × HS6 × month or year</td><td>US annual 2025, monthly to July 2026 at recon time. M49 country codes (Taiwan = 490). Sea/air split not reliable for the US.</td></tr>
+  <tr><td><b>World Port Index</b></td><td>NGA Pub 150 CSV</td><td>None</td><td>Port</td><td>Coordinates and UN/LOCODEs for the port geofences.</td></tr>
+  <tr><td><b>OFAC SDN list</b></td><td>CSV from OFAC</td><td>None</td><td>Listed party</td><td>Vessel IMO numbers parsed from the remarks field.</td></tr>
+  <tr><td><b>US Consolidated Screening List</b></td><td>CSV from trade.gov</td><td>None</td><td>Listed party</td><td>Combines Commerce, State and Treasury lists, including the BIS Entity List.</td></tr>
+  <tr><td><b>OpenSanctions</b> (optional)</td><td><code>targets.simple.csv</code></td><td>Free for non-commercial use; licence for commercial use</td><td>Listed party</td><td>EU, UK, UN and many national lists in one schema.</td></tr>
+</table>
+<p class="muted">The reference-list download URLs could not be reached from the build environment; they should be confirmed on the first live run.</p>
+
+<h3>Schema handling</h3>
+<p>AIS arrives in two layouts: the 2025+ snake_case schema (longitude before latitude, sentinel values already null) and the legacy CamelCase schema. Both are normalised to the 2025 layout; legacy sentinels (heading 511, speed 102.3, course 360, zero dimensions) become null, and the <code>IMO</code> prefix is stripped. Census responses are JSON arrays with a header row; predicate variables echoed back are de-duplicated and numeric fields coerced.</p>
+</div>
+
+<!-- ============================================================ 4 -->
+<div class="section">
+<h2>4. Data model and joins</h2>
+<p>Three sources, two join keys, and one gap that no key can close.</p>
+<figure>
+<svg viewBox="0 0 720 300" width="100%" role="img" aria-label="Join model between AIS, Census and Comtrade">
+  <defs><marker id="ar2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#52514e"/></marker></defs>
+  <g font-size="10">
+    <rect x="0" y="20" width="200" height="120" rx="8" fill="#e8f1fc"/>
+    <text x="100" y="42" text-anchor="middle" font-weight="600" font-size="11">AIS</text>
+    <text x="14" y="64">mmsi, imo, vessel_type, length,</text><text x="14" y="78">width, draft, lat/lon, sog, time</text>
+    <text x="14" y="102" fill="#52514e">→ port calls via geofences</text><text x="14" y="116" fill="#52514e">→ port × month statistics</text>
+
+    <rect x="260" y="20" width="200" height="120" rx="8" fill="#e8f1fc"/>
+    <text x="360" y="42" text-anchor="middle" font-weight="600" font-size="11">Census porths</text>
+    <text x="274" y="64">PORT, month, HS6, CTY_CODE,</text><text x="274" y="78">GEN / VES / CNT / AIR value,</text><text x="274" y="92">VES / AIR weight</text>
+    <text x="274" y="116" fill="#52514e">CTY_CODE = country of origin</text>
+
+    <rect x="520" y="20" width="200" height="120" rx="8" fill="#e8f1fc"/>
+    <text x="620" y="42" text-anchor="middle" font-weight="600" font-size="11">UN Comtrade</text>
+    <text x="534" y="64">reporter, partner (M49), HS6,</text><text x="534" y="78">period, flow, primaryValue,</text><text x="534" y="92">netWgt</text>
+    <text x="534" y="116" fill="#52514e">no port, no ship</text>
+  </g>
+  <g stroke="#52514e" stroke-width="1.5" fill="none">
+    <path d="M200,80 H258" marker-end="url(#ar2)" marker-start="url(#ar2)"/>
+    <path d="M460,80 H518" marker-end="url(#ar2)" marker-start="url(#ar2)"/>
+    <path d="M100,140 C100,250 620,250 620,140" stroke-dasharray="5 4" stroke="#d03b3b"/>
+  </g>
+  <g font-size="9.5">
+    <rect x="164" y="152" width="132" height="44" rx="6" fill="#fff" stroke="#c3c2b7"/>
+    <text x="230" y="169" text-anchor="middle" font-weight="600">port × month</text>
+    <text x="230" y="184" text-anchor="middle" fill="#52514e" font-size="8.5">Schedule D ↔ UN/LOCODE ↔ WPI</text>
+    <rect x="410" y="152" width="160" height="44" rx="6" fill="#fff" stroke="#c3c2b7"/>
+    <text x="490" y="169" text-anchor="middle" font-weight="600">origin × HS6 × period</text>
+    <text x="490" y="184" text-anchor="middle" fill="#52514e" font-size="8.5">Schedule C → ISO → M49</text>
+    <rect x="270" y="232" width="180" height="40" rx="6" fill="#fdeee7"/>
+    <text x="360" y="249" text-anchor="middle" font-weight="600">ship ↔ cargo: no key</text>
+    <text x="360" y="263" text-anchor="middle" fill="#52514e" font-size="8.5">bridged only by a labelled model</text>
+  </g>
+  <path d="M230,152 V120" stroke="#c3c2b7"/><path d="M490,152 V120" stroke="#c3c2b7"/>
+</svg>
+<figcaption>Figure 2. AIS joins Census on port × month through the port crosswalk and geofences. Census joins Comtrade on origin country × HS6 × period through the country crosswalk. Nothing joins a ship to its cargo.</figcaption>
+</figure>
+
+<h3>Crosswalks</h3>
+<table>
+  <tr><th style="width:22%">Table</th><th style="width:38%">Maps</th><th>Notes</th></tr>
+  <tr><td><code>ports.csv</code></td><td>Census Schedule D port → UN/LOCODE → WPI number → lat/lon → geofence radius → region</td><td>13 geofences. Several geofences can share a Census port (Honolulu and Barbers Point). Coordinates are overwritten from the World Port Index on <code>wpi-fetch</code>.</td></tr>
+  <tr><td><code>countries.csv</code></td><td>Census Schedule C <code>CTY_CODE</code> → ISO2/ISO3 → Comtrade M49</td><td>29 countries. Comtrade uses 842 for the US, 699 for India and 490 for Taiwan. <code>census-pull</code> prints any origin code that is not yet mapped.</td></tr>
+  <tr><td><code>dol_goods_hs.csv</code></td><td>DOL-listed good and country → HS prefixes → labour type</td><td>4 seed rows, unverified.</td></tr>
+  <tr><td><code>country_risk.csv</code></td><td>ISO3 → comprehensive sanctions, FATF status, Basel AML score, TIP tier, as-of date</td><td>Ships empty; the analyst fills it from current lists.</td></tr>
+</table>
+
+<h3>Grain of the fused fact table</h3>
+<p><code>fact_port_month_hs6_origin</code>: one row per Census port × month × HS6 × origin country, carrying Census values, the AIS statistics for that port-month (<code>ais_*</code> columns), the origin's share of world exports for that HS6 and year, and the global exporter HHI for that HS6 and year. Census aggregate rows (the total and regional groupings) are excluded; only 4-digit country codes 1000–7999 are kept.</p>
+</div>
+
+<!-- ============================================================ 5 -->
+<div class="section">
+<h2>5. Pipeline stages and commands</h2>
+<p>All commands run as <code>python -m pacific_trade &lt;command&gt;</code> (or <code>pacific-trade</code> once installed). The order below is the normal run.</p>
+<table>
+  <tr><th style="width:17%">Command</th><th style="width:33%">Does</th><th style="width:22%">Reads</th><th>Writes</th></tr>
+  <tr><td><code>wpi-fetch</code></td><td>Downloads the World Port Index and prints the enriched port crosswalk</td><td>NGA</td><td><code>data/ref/wpi.csv</code></td></tr>
+  <tr><td><code>ais-fetch</code></td><td>Streams each national daily file through a zstd decoder (zips via a temp file), keeps the Pacific boxes and ship types 70–89, normalises the schema. Threaded; failed days are reported and retried on the next run.</td><td>NOAA</td><td><code>data/ais/YYYY/YYYY-MM-DD.parquet</code></td></tr>
+  <tr><td><code>census-pull</code></td><td>Port × HS6 × origin × month for the crosswalk ports and HS prefixes in scope. <code>--national</code> for all ports, <code>--hs10</code> for district HS10 detail, <code>--no-wildcard</code> if the <code>8541*</code> filter is rejected.</td><td>Census API</td><td><code>census_porths.parquet</code> (+ national, HS10)</td></tr>
+  <tr><td><code>comtrade-pull</code></td><td>World exports by reporter for the year; the mirror pair (US-reported imports by partner, partners' reported exports to the US) annually and optionally monthly. HS codes are batched 20 per call.</td><td>Comtrade, Census output</td><td><code>comtrade_world_exports</code>, <code>comtrade_us_imports</code>, <code>comtrade_partner_exports</code></td></tr>
+  <tr><td><code>lists-fetch</code></td><td>Downloads OFAC SDN and the US CSL; <code>--opensanctions</code> adds OpenSanctions. Custom CSVs go in <code>lists/custom/</code>.</td><td>OFAC, trade.gov, OpenSanctions</td><td><code>data/ref/lists/*.csv</code></td></tr>
+  <tr><td><code>portcalls</code></td><td>Builds the vessel registry, detects port calls, aggregates to port × month, records identity history and dark gaps.</td><td>Filtered AIS days</td><td><code>vessel_registry</code>, <code>port_calls</code>, <code>port_month_ais</code>, <code>vessel_identity</code>, <code>ais_gaps</code></td></tr>
+  <tr><td><code>build</code></td><td>Fusion, metrics, allocation model, red flags; writes all tables, the report and the dashboard. <code>--method draft_drop</code> for the allocation sensitivity run, <code>--csv</code> for CSV copies.</td><td>Everything above that exists</td><td>16 tables, <code>report.md</code>, <code>dashboard.html</code></td></tr>
+  <tr><td><code>screen</code></td><td>Fuzzy-matches a CSV of company or owner names against the downloaded lists.</td><td>Analyst CSV, lists</td><td><code>screening_hits.csv</code></td></tr>
+  <tr><td><code>demo</code></td><td>Runs the full build on synthetic data with planted anomalies, for previewing. All outputs carry a demo banner.</td><td>Nothing external</td><td>Same as <code>build</code></td></tr>
+</table>
+</div>
+
+<!-- ============================================================ 6 -->
+<div class="section">
+<h2>6. Analytics</h2>
+
+<div class="grid2">
+<div class="box">
+<h3>Vessel identity resolution</h3>
+<p>IMO is missing on about 65% of raw AIS rows. The registry takes, per MMSI, the most common non-null IMO, name, call sign and type over the whole period, and the median dimensions. The stable vessel key is <code>IMO#######</code> where known, otherwise <code>MMSI#########</code>. MMSIs broadcasting more than one IMO are flagged.</p>
+</div>
+<div class="box">
+<h3>Port-call detection</h3>
+<p>Each point is assigned to the nearest port whose radius contains it. A visit is a run of points in one geofence, split when the ship leaves or goes silent for more than 6 h. A visit counts as a call when time at ≤ 0.5 kn reaches 2 h. Calls touching the edge of the date range are flagged as censored.</p>
+</div>
+<div class="box">
+<h3>Anchorage wait</h3>
+<p>Slow time (≤ 0.5 kn) spent within 25 km of the port but outside the berth geofence, in the 72 h before the call's arrival, attached to the next call by the same ship at the same port. This is the only route-deviation signal coastal-only AIS supports.</p>
+</div>
+<div class="box">
+<h3>Concentration metrics</h3>
+<p>Herfindahl–Hirschman Index on the 0–10,000 scale (over 2,500 = highly concentrated): supplier countries per port × HS6, ports per HS6, and world exporters per HS6 (Comtrade). Each comes with member count, top member and its share.</p>
+</div>
+</div>
+
+<h3>Mode split</h3>
+<p>Vessel, air and containerised shares of general import value per port × HS6, plus US dollars per kg by vessel. This answers the recon's second risk first: if chips mostly fly, the AIS side of the story applies mainly to cable and minerals.</p>
+
+<h3>Ship-level allocation (modelled)</h3>
+<div class="callout model">
+  <b>MODELLED, not observed</b>
+  For each port × month × HS6, Census vessel weight and value are spread across the dry-cargo calls (AIS types 70–79) arriving that month, in proportion to a size proxy. Tankers are excluded. Missing dimensions are filled with the port-month median.
+</div>
+<div class="formula">capacity:   weight_i ∝ length × width × arrival_draft
+draft_drop: weight_i ∝ length × width × max(arrival_draft − departure_draft, 0)
+            (calls with no usable draft change: capacity × port-month median drop ratio)</div>
+<p>Outputs: per-call edges (vessel × port × month × HS6 with estimated kg and USD), single-ship dependence per port × month × HS6 (vessel HHI, largest ship and its share), per-ship exposure ranked by estimated value, and the port-month-HS6 cells that had tonnage but no detected call (left unallocated rather than forced onto a ship).</p>
+</div>
+
+<!-- ============================================================ 7 -->
+<div class="section">
+<h2>7. Red-flag framework</h2>
+<p>A registry of documented checks, each emitting rows in one shared schema, then rolled up per entity. Adding a check means writing one decorated function and a test; it appears in the report, the dashboard and the check library automatically.</p>
+
+<figure>
+<svg viewBox="0 0 720 150" width="100%" role="img" aria-label="Red-flag flow from context to checks to flags to entity roll-up to outputs">
+  <defs><marker id="ar3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#898781"/></marker></defs>
+  <g font-size="9.5">
+    <rect x="0" y="20" width="128" height="104" rx="8" fill="#f3f2ee"/>
+    <text x="64" y="40" text-anchor="middle" font-weight="600">Context</text>
+    <text x="64" y="58" text-anchor="middle" font-size="8.5" fill="#52514e">Census, Comtrade,</text>
+    <text x="64" y="71" text-anchor="middle" font-size="8.5" fill="#52514e">AIS registry, identity,</text>
+    <text x="64" y="84" text-anchor="middle" font-size="8.5" fill="#52514e">gaps, watchlists,</text>
+    <text x="64" y="97" text-anchor="middle" font-size="8.5" fill="#52514e">DOL goods, country risk</text>
+    <rect x="148" y="20" width="140" height="104" rx="8" fill="#fdeee7"/>
+    <text x="218" y="40" text-anchor="middle" font-weight="600">Typology registry</text>
+    <text x="218" y="58" text-anchor="middle" font-size="8.5" fill="#52514e">10 checks, each with</text>
+    <text x="218" y="71" text-anchor="middle" font-size="8.5" fill="#52514e">question, method,</text>
+    <text x="218" y="84" text-anchor="middle" font-size="8.5" fill="#52514e">sources, data needed,</text>
+    <text x="218" y="97" text-anchor="middle" font-size="8.5" fill="#52514e">innocent explanations</text>
+    <rect x="308" y="20" width="128" height="104" rx="8" fill="#fff" stroke="#c3c2b7"/>
+    <text x="372" y="40" text-anchor="middle" font-weight="600">Flags</text>
+    <text x="372" y="58" text-anchor="middle" font-size="8.5" fill="#52514e">entity, period,</text>
+    <text x="372" y="71" text-anchor="middle" font-size="8.5" fill="#52514e">score 0–1, severity,</text>
+    <text x="372" y="84" text-anchor="middle" font-size="8.5" fill="#52514e">summary, evidence,</text>
+    <text x="372" y="97" text-anchor="middle" font-size="8.5" fill="#52514e">caveats, HS6, port</text>
+    <rect x="456" y="20" width="128" height="104" rx="8" fill="#fff" stroke="#c3c2b7"/>
+    <text x="520" y="40" text-anchor="middle" font-weight="600">Entity roll-up</text>
+    <text x="520" y="58" text-anchor="middle" font-size="8.5" fill="#52514e">max per check,</text>
+    <text x="520" y="71" text-anchor="middle" font-size="8.5" fill="#52514e">then 1 − Π(1 − s)</text>
+    <text x="520" y="84" text-anchor="middle" font-size="8.5" fill="#52514e">ranked queue</text>
+    <rect x="604" y="20" width="116" height="104" rx="8" fill="#fff" stroke="#0b0b0b"/>
+    <text x="662" y="40" text-anchor="middle" font-weight="600">Outputs</text>
+    <text x="662" y="58" text-anchor="middle" font-size="8.5" fill="#52514e">red_flags</text>
+    <text x="662" y="71" text-anchor="middle" font-size="8.5" fill="#52514e">red_flag_entities</text>
+    <text x="662" y="84" text-anchor="middle" font-size="8.5" fill="#52514e">red_flag_runlog</text>
+    <text x="662" y="97" text-anchor="middle" font-size="8.5" fill="#52514e">typology_library</text>
+  </g>
+  <g stroke="#898781" stroke-width="1.3" marker-end="url(#ar3)">
+    <path d="M128,72 H146"/><path d="M288,72 H306"/><path d="M436,72 H454"/><path d="M584,72 H602"/>
+  </g>
+</svg>
+<figcaption>Figure 3. A check whose inputs are missing returns nothing and is logged as skipped; a check that raises an error is logged and does not stop the others.</figcaption>
+</figure>
+
+<h3>The ten checks</h3>
+<table>
+  <tr><th style="width:14%">ID</th><th style="width:23%">Check</th><th style="width:40%">Method (summary)</th><th>Scores</th></tr>
+  <tr><td colspan="4" style="background:#f3f2ee;font-weight:600">Trade-based money laundering</td></tr>
+  <tr><td><code>TBML-PRICE</code></td><td>Unit-price outlier</td><td>Robust z of log($/kg) within HS6 (median, MAD floored at 0.1); flows ≥ 100 kg and ≥ $50k</td><td>0.40–0.95 by |z|, +0.1 for ≥ $1M</td></tr>
+  <tr><td><code>TBML-MIRROR</code></td><td>Mirror-trade gap</td><td>US-reported imports ÷ partner-reported exports to the US; flags outside 0.67–1.5 where either side ≥ $1M</td><td>0.35–0.95 by |log ratio|</td></tr>
+  <tr><td><code>TBML-EXCEED</code></td><td>Imports exceed origin's exports</td><td>Annual US imports by origin ÷ origin's exports to World; non-reporting countries skipped</td><td>0.60–0.95; 0.40 if none reported</td></tr>
+  <tr><td><code>TBML-SURGE</code></td><td>Origin-share surge</td><td>Recent 3-month share vs baseline: +15 pp and ≥ 3×</td><td>0.35–0.75, +0.2 if &lt; 2% of world exports</td></tr>
+  <tr><td colspan="4" style="background:#f3f2ee;font-weight:600">Sanctions and export-control evasion</td></tr>
+  <tr><td><code>SANC-VESSEL</code></td><td>Vessel on a list</td><td>IMO (check-digit validated) or MMSI exact match; name-only match for review</td><td>0.95; 0.50 name only</td></tr>
+  <tr><td><code>SANC-IDENTITY</code></td><td>Identity manipulation</td><td>MMSI with several IMOs; bad IMO check digit; flag (MID) change; three or more names; MMSI outside 201–775</td><td>0.40–0.60, highest applies</td></tr>
+  <tr><td><code>SANC-DARK</code></td><td>Dark period inside coverage</td><td>Gap ≥ 12 h, both ends within 30 km of a port, moved ≥ 5 km</td><td>0.35–0.75 by gap length</td></tr>
+  <tr><td><code>SANC-COUNTRY</code></td><td>High-risk jurisdiction</td><td>Origins under comprehensive sanctions, on FATF lists, or Basel AML score ≥ 6.5</td><td>0.90 / 0.80 / 0.45 / 0.40</td></tr>
+  <tr><td colspan="4" style="background:#f3f2ee;font-weight:600">Forced labour in supply chains</td></tr>
+  <tr><td><code>FL-DOL-GOODS</code></td><td>DOL-listed good and origin</td><td>Origin × HS6 matched to the DOL TVPRA list via HS prefixes</td><td>forced 0.60, child 0.45, both 0.65; +0.1 for ≥ $1M</td></tr>
+  <tr><td><code>FL-TIP</code></td><td>TIP Tier 3 origin</td><td>Origin ranked Tier 3 in the State Department TIP report</td><td>0.35</td></tr>
+</table>
+<p>Severity bands: high ≥ 0.75, medium ≥ 0.45, low below. Sources cited by the checks include the FATF TBML report (2006) and FATF/Egmont risk indicators (2021), Global Financial Integrity's mirror-trade method, FinCEN advisories, the OFAC/State/US Coast Guard Sanctions Advisory for the Maritime Industry (May 2020), the DOL List of Goods Produced by Child Labor or Forced Labor, the State Department TIP report, FATF jurisdiction lists and the Basel AML Index.</p>
+
+<h3>Entity roll-up</h3>
+<div class="formula">risk(entity) = 1 − Π over checks c of (1 − max score of c on that entity)</div>
+<p>Several weak, independent signals outrank one weak signal but never reach certainty, and a check that fires every month counts once. Entities are trade flows (port ← origin · HS6), trade lanes (origin · HS6), origin countries and vessels.</p>
+</div>
+
+<!-- ============================================================ 8 -->
+<div class="section">
+<h2>8. Outputs and dashboard</h2>
+<h3>Tables written by <code>build</code></h3>
+<table>
+  <tr><th style="width:30%">Table</th><th>Contents</th></tr>
+  <tr><td><code>fact_port_month_hs6_origin</code></td><td>Fused fact table (section 4)</td></tr>
+  <tr><td><code>origin_hhi</code>, <code>port_hhi</code>, <code>global_exporter_hhi</code></td><td>Concentration metrics</td></tr>
+  <tr><td><code>mode_split</code></td><td>Vessel / air / containerised shares and $/kg</td></tr>
+  <tr><td><code>port_month_ais</code></td><td>Calls, ships, dwell and anchorage wait per port-month</td></tr>
+  <tr><td><code>census_vs_comtrade</code></td><td>Census general imports vs Comtrade US-reported imports (needs the national pull)</td></tr>
+  <tr><td><code>est_vessel_edges</code>, <code>est_vessel_spof</code>, <code>est_vessel_exposure</code>, <code>est_unallocated</code></td><td>Modelled ship-level allocation</td></tr>
+  <tr><td><code>red_flags</code>, <code>red_flag_entities</code>, <code>red_flag_runlog</code>, <code>typology_library</code></td><td>Red-flag outputs</td></tr>
+</table>
+
+<h3>Dashboard</h3>
+<p>One self-contained HTML file: no external scripts, fonts or network calls, so it opens offline and can be emailed or hosted as a static page. The build embeds the tables the page needs as JSON (with <code>&lt;/</code> escaped), and the browser re-aggregates them as filters change.</p>
+<table>
+  <tr><th style="width:24%">Section</th><th>Shows</th></tr>
+  <tr><td>Filters</td><td>Month range, commodity group, HS6 line, port, red-flag area; every section below responds</td></tr>
+  <tr><td>Headline tiles</td><td>Vessel import value, all-mode value, share by vessel, vessel weight, supplier HHI with level, AIS cargo calls</td></tr>
+  <tr><td>Trade (Census)</td><td>Mode split, vessel value by port, countries of origin, monthly trend</td></tr>
+  <tr><td>Port activity (AIS)</td><td>Cargo calls per month; mean hours moored and waiting at anchor</td></tr>
+  <tr><td>Global supply (Comtrade)</td><td>World exporter HHI per HS6 against the 2,500 line</td></tr>
+  <tr><td>Red flags</td><td>Flags by check, highest-risk entities, all flags with evidence and caveats, check library with this build's run status</td></tr>
+  <tr><td>Vessel exposure (modelled)</td><td>Estimated value per ship and single-ship dependence, under a "MODELLED" banner</td></tr>
+</table>
+<p>Every chart has a table view and keyboard-reachable tooltips; the page supports light and dark themes and phone-width screens. The categorical palette was checked with a colour-vision-deficiency validator. Because the file embeds its data, sharing it shares the numbers.</p>
+</div>
+
+<!-- ============================================================ 9 -->
+<div class="section">
+<h2>9. Reference data and governance</h2>
+<table>
+  <tr><th style="width:24%">Item</th><th style="width:30%">State</th><th>Action before publishing</th></tr>
+  <tr><td>Port crosswalk</td><td>Seed coordinates; <code>verified=0</code></td><td>Run <code>wpi-fetch</code>; fill UN/LOCODEs for Nawiliwili and Kona; confirm Barbers Point reports under 3201 from the first Census pull</td></tr>
+  <tr><td>Country crosswalk</td><td>29 countries; <code>verified=0</code></td><td>Check against Census Schedule C "By ISO code"; add any codes <code>census-pull</code> reports as unmapped</td></tr>
+  <tr><td>DOL goods mapping</td><td>4 rows; <code>verified=0</code></td><td>Check against the current DOL list and its HS mapping</td></tr>
+  <tr><td>Country risk</td><td>Empty by design</td><td>Fill from the latest FATF plenary, Basel AML Index, OFAC programmes and TIP report; record <code>as_of</code></td></tr>
+  <tr><td>Watchlists</td><td>Downloaded on demand</td><td>Refresh before each run (<code>lists-fetch --refresh</code>); respect the OpenSanctions licence</td></tr>
+</table>
+<p>The reference tables ship inside the package. <code>PACIFIC_TRADE_CROSSWALKS</code> points the pipeline at an edited copy without touching the installed files.</p>
+
+<h3>Licensing and terms</h3>
+<ul>
+  <li>NOAA AIS, Census, World Port Index, OFAC SDN and the US CSL are US government data with no access constraints.</li>
+  <li>UN Comtrade free keys allow 500 calls a day; bulk downloads are a paid tier.</li>
+  <li>OpenSanctions is free for non-commercial use only.</li>
+  <li>Sources such as Equasis restrict automated collection and are deliberately not scraped.</li>
+</ul>
+</div>
+
+<!-- ============================================================ 10 -->
+<div class="section">
+<h2>10. Operations</h2>
+<h3>Configuration</h3>
+<table>
+  <tr><th style="width:30%">Setting</th><th>Purpose</th></tr>
+  <tr><td><code>CENSUS_API_KEY</code></td><td>Required for any Census pull</td></tr>
+  <tr><td><code>COMTRADE_API_KEY</code></td><td>Recommended; without it only the keyless preview works (one period and product per call, 500 records)</td></tr>
+  <tr><td><code>PACIFIC_TRADE_DATA</code></td><td>Data directory; defaults to <code>./data</code></td></tr>
+  <tr><td><code>PACIFIC_TRADE_CROSSWALKS</code></td><td>Optional path to edited reference tables</td></tr>
+</table>
+<p>Keys belong in environment variables or a secrets store, never in code or chat.</p>
+
+<h3>Network access needed</h3>
+<p><code>api.census.gov</code>, <code>comtradeapi.un.org</code>, <code>noaaocm.blob.core.windows.net</code> (AIS 2025+), <code>coast.noaa.gov</code> (AIS ≤2024), <code>msi.nga.mil</code>, <code>sanctionslistservice.ofac.treas.gov</code>, <code>www.treasury.gov</code>, <code>data.trade.gov</code>, and optionally <code>data.opensanctions.org</code>.</p>
+
+<h3>Volume and run time</h3>
+<table>
+  <tr><th style="width:30%">Item</th><th>Estimate</th></tr>
+  <tr><td>AIS download</td><td>~200–300 MB per day; ~20 GB per quarter; ~80 GB per year compressed</td></tr>
+  <tr><td>AIS filtering</td><td>~25 s per day (recon measurement); only the filtered Parquet is kept</td></tr>
+  <tr><td>Census, Comtrade, lists</td><td>Small; minutes per quarter; cached after the first pull</td></tr>
+  <tr><td><code>build</code></td><td>Seconds on a quarter (the synthetic demo builds in under 2 s)</td></tr>
+</table>
+<p>Recommended first live run: all trade data and lists for one quarter, plus about one week of AIS, then scale AIS up once the outputs are checked.</p>
+
+<h3>Rate limits and resilience</h3>
+<ul>
+  <li>HTTP retries with exponential backoff on 429 and 5xx; downloads are written to a temporary file and renamed on completion.</li>
+  <li>Comtrade calls are throttled to one per 1.1 s and capped at the daily budget per process.</li>
+  <li>A failed AIS day does not stop the others; re-running fetches only what is missing.</li>
+</ul>
+</div>
+
+<!-- ============================================================ 11 -->
+<div class="section">
+<h2>11. Limitations and guardrails</h2>
+<h3>Known limitations</h3>
+<table>
+  <tr><th style="width:28%">Limitation</th><th>Effect and mitigation</th></tr>
+  <tr><td>No ship ↔ cargo link</td><td>Ship-level figures are modelled and labelled; unallocated tonnage is reported, not forced onto ships</td></tr>
+  <tr><td>Coastal-only AIS</td><td>No ocean legs, no ship-to-ship transfers at sea; Hawaii coverage is thin (16 cargo/tanker IMOs on the probe day)</td></tr>
+  <tr><td>Semiconductors may mostly fly</td><td>The mode split is shown first; AIS conclusions apply mainly to cable and minerals if the vessel share is low</td></tr>
+  <tr><td>Origin, not lading country</td><td>Census <code>CTY_CODE</code> is where goods were made; transshipment hubs are invisible in Census and must be inferred</td></tr>
+  <tr><td>Disclosure suppression</td><td>Small ports and narrow HS6 lines lose or move values; missing is not zero</td></tr>
+  <tr><td>HS6 breadth</td><td>Price checks can flag legitimate product-mix differences; HS10 detail (<code>--hs10</code>) is the follow-up</td></tr>
+  <tr><td>Crew-entered AIS static data</td><td>Identity flags can be typos; corroborate with a ship registry</td></tr>
+  <tr><td>Guam</td><td>AIS only; no Census trade data</td></tr>
+</table>
+
+<h3>Guardrails</h3>
+<div class="callout info">
+  <b>A flag is a lead, not a finding</b>
+  Output language is "matches typology X, with this evidence and these caveats". Credible leads go to bodies that can act: FinCEN, CBP e-Allegations, the DEA tip line, or the National Human Trafficking Hotline.
+</div>
+<ul>
+  <li><b>Organisations and vessels, not private individuals.</b> The pipeline builds no profiles of people.</li>
+  <li><b>No accusations in public.</b> Naming a company or person as a launderer from public-data anomalies risks defamation; corroborate and route through the proper channels.</li>
+  <li><b>Data collection within the rules.</b> APIs and bulk downloads only; no logins the analyst does not own; licence terms respected.</li>
+  <li><b>Demo output is marked.</b> Synthetic runs carry a banner on the dashboard and the report, because they show real country, port and vessel-style names next to random numbers.</li>
+  <li><b>Human trafficking</b> is covered through the forced-labour supply-chain angle only; victim-facing work (ads, social media) is left to specialist organisations.</li>
+</ul>
+</div>
+
+<!-- ============================================================ 12 -->
+<div class="section">
+<h2>12. Code layout, testing and roadmap</h2>
+<h3>Package layout</h3>
+<table>
+  <tr><th style="width:30%">Module</th><th>Responsibility</th></tr>
+  <tr><td><code>config.py</code></td><td>Scope constants (HS codes, boxes, thresholds), endpoints, paths, keys</td></tr>
+  <tr><td><code>http.py</code></td><td>Retries, on-disk JSON cache, atomic streamed downloads</td></tr>
+  <tr><td><code>ais.py</code></td><td>Download, normalise both schemas, stream-filter, vessel registry</td></tr>
+  <tr><td><code>census.py</code>, <code>comtrade.py</code></td><td>API clients with caching and throttling</td></tr>
+  <tr><td><code>crosswalk.py</code></td><td>Port and country crosswalks, WPI enrichment, geofence assignment</td></tr>
+  <tr><td><code>portcalls.py</code></td><td>Visit segmentation, call detection, anchorage wait, port-month stats</td></tr>
+  <tr><td><code>fusion.py</code>, <code>metrics.py</code>, <code>allocation.py</code></td><td>Fact table, concentration and mode metrics, modelled allocation</td></tr>
+  <tr><td><code>redflags/</code></td><td><code>framework.py</code> (registry, schema, roll-up), <code>tbml.py</code>, <code>sanctions.py</code> (incl. list loaders, screening, identity and gap detection), <code>forced_labor.py</code></td></tr>
+  <tr><td><code>build.py</code>, <code>report.py</code>, <code>dashboard.py</code></td><td>Assemble tables, render Markdown and HTML</td></tr>
+  <tr><td><code>demo.py</code>, <code>cli.py</code></td><td>Synthetic data with planted anomalies; command-line interface</td></tr>
+</table>
+
+<h3>Testing</h3>
+<p>40 offline tests (pytest), no network required: schema normalisation and sentinel handling, zstd streaming, port-call and anchorage logic, LA/Long Beach overlap, API parsing and caching (mocked), the missing-key redirect, allocation conservation, every red-flag check including IMO check digits and list loaders, the entity roll-up, error isolation between checks, dashboard payload escaping, and end-to-end <code>portcalls</code> → <code>build</code> and <code>demo</code> runs. A clean, non-editable install runs the demo end to end.</p>
+
+<h3>Roadmap</h3>
+<table>
+  <tr><th style="width:6%">#</th><th style="width:34%">Item</th><th>Why</th></tr>
+  <tr><td>1</td><td>First live run (one quarter)</td><td>Validate against USA Trade Online by hand; learn the real false-positive rate of each check</td></tr>
+  <tr><td>2</td><td>Drug-precursor module</td><td>Precursor-chemical trade flows and mirror gaps; CBP seizure statistics; OFAC narcotics designations</td></tr>
+  <tr><td>3</td><td>Illegal fishing and maritime module</td><td>Global Fishing Watch satellite AIS (fixes the coastal-only blind spot), encounters and gaps, fisheries-body IUU vessel lists</td></tr>
+  <tr><td>4</td><td>Counterfeit and illicit-goods module</td><td>CBP IPR seizure statistics, OECD/EUIPO counterfeit-trade data</td></tr>
+  <tr><td>5</td><td>Ownership graph</td><td>GLEIF, OpenCorporates, UK Companies House beneficial owners, ICIJ Offshore Leaks; entity resolution across them</td></tr>
+  <tr><td>6</td><td>Validation set</td><td>Score the checks against publicly charged cases (DOJ, OFAC and BIS enforcement actions)</td></tr>
+  <tr><td>7</td><td>Standalone repository</td><td>Move the package out of <code>brand-intel</code> into its own repository for sharing</td></tr>
+</table>
+</div>
+
+</body>
+</html>
