@@ -82,6 +82,12 @@ def payload(tables: dict[str, pd.DataFrame], ports: pd.DataFrame, countries: pd.
         "unalloc": _cols(unalloc, ["port_key", "month", "hs6", "VES_VAL_MO"],
                          {"port_key": "port", "VES_VAL_MO": "val"}, digits=0),
         "vessels": vessels,
+        "flags": _cols(tables.get("red_flags"), ["typology_id", "area", "entity_type", "entity_id", "entity_label", "period",
+                                                 "score", "severity", "summary", "evidence", "caveats", "hs6", "port"],
+                       {"typology_id": "t", "entity_type": "etype", "entity_id": "eid", "entity_label": "label"}, digits=3),
+        "library": _cols(tables.get("typology_library"), ["id", "area", "area_name", "name", "question", "method", "sources",
+                                                         "innocent_explanations"]),
+        "runlog": _cols(tables.get("red_flag_runlog"), ["typology_id", "status", "n_flags"], {"typology_id": "t"}),
         "m49": names,
         "hs4": HS4_LABELS,
     }

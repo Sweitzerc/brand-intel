@@ -20,9 +20,15 @@ def _md(df: pd.DataFrame, n=10, floatfmt="{:,.2f}") -> str:
     return "\n".join(lines) + "\n"
 
 
-def render(tables: dict[str, pd.DataFrame], method: str) -> str:
+DEMO_BANNER = ("> **SYNTHETIC DEMO DATA.** Every number below is random and only shows the layout. "
+               "Country, port and vessel names appear, but nothing here is a finding about them.")
+
+
+def render(tables: dict[str, pd.DataFrame], method: str, demo: bool = False) -> str:
     fact = tables["fact_port_month_hs6_origin"]
     out = ["# Pacific semiconductor & critical-mineral shipments: build report", ""]
+    if demo:
+        out += [DEMO_BANNER, ""]
     if not fact.empty:
         out += [f"Months: {fact['month'].min()} to {fact['month'].max()} · ports: {fact['PORT'].nunique()} · "
                 f"HS6 lines: {fact['hs6'].nunique()} · origin countries: {fact['CTY_CODE'].nunique()}", ""]
@@ -45,6 +51,14 @@ def render(tables: dict[str, pd.DataFrame], method: str) -> str:
     if "global_exporter_hhi" in tables:
         out += ["## Global exporter concentration (Comtrade)", "",
                 _md(tables["global_exporter_hhi"].sort_values("hhi", ascending=False)), ""]
+    if "red_flags" in tables:
+        ents, log = tables["red_flag_entities"], tables["red_flag_runlog"]
+        out += ["## Red flags (leads for review, not findings)", "",
+                "Each flag matches a documented typology. Most have innocent explanations; see "
+                "`typology_library` for each check's sources and caveats.", "",
+                _md(log[["typology_id", "name", "status", "n_flags"]], n=50), "",
+                "Highest-risk entities:", "",
+                _md(ents[["entity_type", "entity_label", "risk", "severity", "typologies"]], n=15, floatfmt="{:.2f}"), ""]
     if "est_vessel_exposure" in tables:
         unalloc = tables["est_unallocated"]
         out += [f"## Vessel exposure: MODELLED ({method} allocation)", "",

@@ -115,3 +115,9 @@ def world_exports_by_reporter(year: str, cmd: list[str]) -> pd.DataFrame:
     """Every reporter's exports to World (partner 0): input to global exporter HHI."""
     df = get("A", cmd=cmd, period=year, flow="X", partner=0)
     return df[df["partnerCode"].astype(int) == 0]
+
+
+def partner_exports_to_us(freq: str, cmd: list[str], periods: list[str], reporters: list[int]) -> pd.DataFrame:
+    """Each partner's own reported exports to the US: the other side of the mirror."""
+    from .config import COMTRADE_USA
+    return get(freq, cmd=cmd, period=periods, flow="X", reporter=reporters, partner=COMTRADE_USA)

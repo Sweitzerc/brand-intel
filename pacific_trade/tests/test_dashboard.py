@@ -17,6 +17,8 @@ def test_demo_dashboard_is_self_contained_and_flagged():
     assert data["meta"]["demo"] is True
     assert len(data["fact"]["port"]) == len(tables["fact_port_month_hs6_origin"])
     assert data["edges"]["v"] and data["global"]["hhi"] and data["ais"]["calls"]
+    assert len(data["flags"]["t"]) == len(tables["red_flags"]) > 0
+    assert len(data["library"]["id"]) == len(data["runlog"]["t"]) == 10
 
 
 def test_payload_escapes_script_close():
@@ -31,4 +33,5 @@ def test_demo_command_writes_dashboard():
     cli.main(["demo"])
     out = config.data_dir() / "out"
     assert "SYNTHETIC DEMO DATA" in (out / "dashboard.html").read_text()
-    assert (out / "report.md").exists()
+    report = (out / "report.md").read_text()
+    assert "Red flags (leads for review, not findings)" in report and "SYNTHETIC DEMO DATA" in report

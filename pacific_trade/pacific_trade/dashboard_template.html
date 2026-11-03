@@ -12,7 +12,7 @@
   --grid: #e1e0d9; --baseline: #c3c2b7; --border: rgba(11,11,11,0.10);
   --series-1: #2a78d6; --series-2: #eb6834; --series-3: #1baf7a;
   --series-1-soft: rgba(42,120,214,0.10);
-  --good: #0ca30c; --warning: #fab219; --critical: #d03b3b;
+  --good: #0ca30c; --warning: #fab219; --serious: #ec835a; --critical: #d03b3b;
   --banner-bg: #fff4e5; --banner-ink: #6b3b00; --model-bg: #f1eefc; --model-ink: #3a2d8f;
 }
 @media (prefers-color-scheme: dark) {
@@ -91,6 +91,9 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 #tip .r { display: flex; align-items: center; gap: 8px; justify-content: space-between; }
 #tip .r b { font-weight: 600; }
 #tip .k { display: inline-block; width: 12px; height: 2px; border-radius: 1px; margin-right: 6px; vertical-align: middle; }
+.card.wide { grid-column: 1 / -1; }
+.note { background: var(--surface-2); color: var(--text-secondary); border-radius: 10px; padding: 10px 14px; margin-bottom: 12px; }
+td .cw { white-space: normal; min-width: 200px; max-width: 380px; }
 footer { margin-top: 32px; color: var(--text-secondary); font-size: 12.5px; }
 footer li { margin: 4px 0; }
 .mark { cursor: default; }
@@ -108,7 +111,7 @@ footer li { margin: 4px 0; }
     </div>
     <button id="theme" type="button" aria-label="Toggle light or dark theme">Theme</button>
   </header>
-  <div class="banner" id="demoBanner" hidden>SYNTHETIC DEMO DATA. These numbers are random and only show the layout. They are not results.</div>
+  <div class="banner" id="demoBanner" hidden>SYNTHETIC DEMO DATA. These numbers are random and only show the layout. Real country, port and vessel names appear, but nothing here is a finding about them.</div>
 
   <div class="filters" role="group" aria-label="Filters">
     <label>From<select id="fFrom"></select></label>
@@ -120,6 +123,7 @@ footer li { margin: 4px 0; }
     </select></label>
     <label>HS6 line<select id="fHs6"></select></label>
     <label>Port of unlading<select id="fPort"></select></label>
+    <label>Red-flag area<select id="fArea"><option value="all">All areas</option></select></label>
     <button id="reset" type="button">Reset</button>
   </div>
 
@@ -142,6 +146,15 @@ footer li { margin: 4px 0; }
   <h3 class="section">Global supply (Comtrade, observed)</h3>
   <div class="grid">
     <section class="card" id="cGlobal"></section>
+  </div>
+
+  <h3 class="section">Red flags (leads for review)</h3>
+  <div class="note" id="flagNote">Each flag is a pattern that matches a documented typology. It is a lead for an analyst to check, not evidence that anyone broke the law. Many flags have innocent explanations, listed in the check library below. Commodity and port filters apply to flags tied to an HS6 code or port; the month filter does not apply here because checks use different periods.</div>
+  <div class="grid">
+    <section class="card" id="cFlagCounts"></section>
+    <section class="card" id="cEntities"></section>
+    <section class="card wide" id="cFlags"></section>
+    <section class="card wide" id="cLibrary"></section>
   </div>
 
   <h3 class="section">Vessel exposure (modelled)</h3>
@@ -178,6 +191,8 @@ function rows(cols) {
   for (let i = 0; i < n; i++) { const o = {}; for (const k of keys) o[k] = cols[k][i]; out[i] = o; }
   return out;
 }
+const FLAGS = rows(D.flags || {}), LIB = rows(D.library || {}), RUNLOG = rows(D.runlog || {});
+const LIB_BY = Object.fromEntries(LIB.map(r => [r.id, r]));
 const FACT = rows(D.fact), AIS = rows(D.ais), GLOBAL = rows(D.global), EDGES = rows(D.edges), UNALLOC = rows(D.unalloc);
 const MONTHS = [...new Set(FACT.map(r => r.month).concat(AIS.map(r => r.month)))].sort();
 const groupOf = hs => { const h = String(hs).slice(0, 2); return h === "85" ? "semiconductor" : "mineral"; };
@@ -221,6 +236,15 @@ function statusEl(st) {
   span.appendChild(svg); span.appendChild(document.createTextNode(st.label));
   return span;
 }
+function sevEl(sev) {
+  const map = { high: { key: "critical", label: "High" }, medium: { key: "warning", label: "Medium" }, low: { key: "low", label: "Low" } };
+  const st = map[sev]; if (!st) return statusEl(null);
+  if (st.key !== "low") return statusEl(st);
+  const span = document.createElement("span"); span.className = "status";
+  const svg = el("svg", { width: 12, height: 12, viewBox: "0 0 12 12", "aria-hidden": "true" });
+  svg.appendChild(el("circle", { cx: 6, cy: 6, r: 4.5, fill: "none", stroke: "var(--text-muted)", "stroke-width": 1.5 }));
+  span.appendChild(svg); span.appendChild(document.createTextNode(st.label)); return span;
+}
 function sumBy(list, key, valFn) {
   const m = new Map();
   for (const r of list) { const k = key(r); m.set(k, (m.get(k) || 0) + valFn(r)); }
@@ -228,7 +252,7 @@ function sumBy(list, key, valFn) {
 }
 
 // ---------- state & filters ----------
-const S = { from: MONTHS[0], to: MONTHS[MONTHS.length - 1], group: "all", hs6: "all", port: "all" };
+const S = { from: MONTHS[0], to: MONTHS[MONTHS.length - 1], group: "all", hs6: "all", port: "all", area: "all" };
 const $ = id => document.getElementById(id);
 function opt(sel, value, text) { const o = document.createElement("option"); o.value = value; o.textContent = text; sel.appendChild(o); }
 function initFilters() {
@@ -245,14 +269,17 @@ function initFilters() {
     pSel.appendChild(g);
   }
   fillHs6();
+  const areas = [...new Map(LIB.map(r => [r.area, r.area_name])).entries()];
+  for (const [a, n] of areas) opt($("fArea"), a, n);
+  $("fArea").onchange = e => { S.area = e.target.value; update(); };
   $("fFrom").onchange = e => { S.from = e.target.value; if (S.from > S.to) { S.to = S.from; $("fTo").value = S.to; } update(); };
   $("fTo").onchange = e => { S.to = e.target.value; if (S.to < S.from) { S.from = S.to; $("fFrom").value = S.from; } update(); };
   $("fGroup").onchange = e => { S.group = e.target.value; S.hs6 = "all"; fillHs6(); update(); };
   $("fHs6").onchange = e => { S.hs6 = e.target.value; update(); };
   $("fPort").onchange = e => { S.port = e.target.value; update(); };
   $("reset").onclick = () => {
-    Object.assign(S, { from: MONTHS[0], to: MONTHS[MONTHS.length - 1], group: "all", hs6: "all", port: "all" });
-    $("fFrom").value = S.from; $("fTo").value = S.to; $("fGroup").value = "all"; $("fPort").value = "all"; fillHs6(); update();
+    Object.assign(S, { from: MONTHS[0], to: MONTHS[MONTHS.length - 1], group: "all", hs6: "all", port: "all", area: "all" });
+    $("fFrom").value = S.from; $("fTo").value = S.to; $("fGroup").value = "all"; $("fPort").value = "all"; $("fArea").value = "all"; fillHs6(); update();
   };
 }
 function fillHs6() {
@@ -617,6 +644,58 @@ function update() {
       { key: "top", label: "Top exporter" }, { key: "topShare", label: "Top share", num: true, fmt: pct }, { key: "year", label: "Year" }], data);
   }
 
+  // red flags
+  {
+    const FF = FLAGS.filter(f => (S.area === "all" || f.area === S.area) && (!f.hs6 || inComm(f.hs6)) && (!f.port || inPort(f.port)));
+    const checkName = t => (LIB_BY[t] && LIB_BY[t].name) || t;
+    const k = card("cFlagCounts", "Flags by check", `${full(FF.length)} flags after filters`);
+    const by = new Map();
+    for (const f of FF) { const a = by.get(f.t) || { n: 0, high: 0, medium: 0, low: 0 }; a.n++; a[f.severity]++; by.set(f.t, a); }
+    const data = [...by.entries()].sort((a, b) => b[1].n - a[1].n).map(([t, a]) => ({ label: checkName(t), value: a.n, t, ...a,
+      tip: [["Flags", full(a.n)], ["High", full(a.high)], ["Medium", full(a.medium)], ["Low", full(a.low)]] }));
+    hbars(k.chart, data, { fmt: full, labelMax: 230, empty: "No flags for this filter.", aria: "Number of red flags by check" });
+    table(k.table, [{ key: "label", label: "Check" }, { key: "t", label: "ID" }, { key: "n", label: "Flags", num: true },
+      { key: "high", label: "High", num: true }, { key: "medium", label: "Medium", num: true }, { key: "low", label: "Low", num: true }], data);
+
+    // Entity roll-up: max per entity x check, then 1 - prod(1 - s), as in framework.entity_risk.
+    const ent = new Map();
+    for (const f of FF) {
+      const key = f.etype + "|" + f.eid; const e = ent.get(key) || { label: f.label, etype: f.etype, checks: new Map(), n: 0 };
+      e.checks.set(f.t, Math.max(e.checks.get(f.t) || 0, f.score)); e.n++; ent.set(key, e);
+    }
+    const ER = [...ent.values()].map(e => {
+      const risk = 1 - [...e.checks.values()].reduce((p, sc) => p * (1 - sc), 1);
+      return { label: e.label, etype: e.etype.replace("_", " "), risk, sev: risk >= 0.75 ? "high" : risk >= 0.45 ? "medium" : "low",
+        n: e.n, checks: [...e.checks.keys()].sort().join(", ") };
+    }).sort((a, b) => b.risk - a.risk || b.n - a.n);
+    const k2 = card("cEntities", "Highest-risk entities", "Flags combined per entity; repeats of one check count once");
+    k2.table.hidden = false; k2.c.querySelector(".card-head button").remove(); k2.chart.hidden = true; k2.legend.hidden = true;
+    if (!ER.length) empty(k2.table, "No flags for this filter.");
+    else table(k2.table, [{ key: "label", label: "Entity" }, { key: "etype", label: "Type" },
+      { key: "risk", label: "Risk", num: true, fmt: v => v.toFixed(2) }, { key: "sev", label: "Level", fmt: v => sevEl(v) },
+      { key: "checks", label: "Checks" }, { key: "n", label: "Flags", num: true }], ER.slice(0, 50));
+
+    const k3 = card("cFlags", "All flags", FF.length > 300 ? `Top 300 of ${full(FF.length)} by score` : "Sorted by score");
+    k3.table.hidden = false; k3.c.querySelector(".card-head button").remove(); k3.chart.hidden = true; k3.legend.hidden = true;
+    k3.table.style.maxHeight = "460px";
+    if (!FF.length) empty(k3.table, "No flags for this filter.");
+    else table(k3.table, [{ key: "severity", label: "Level", fmt: v => sevEl(v) }, { key: "t", label: "Check", fmt: checkName },
+      { key: "label", label: "Entity" }, { key: "period", label: "Period" }, { key: "summary", label: "What", fmt: v => cellWrap(v) },
+      { key: "evidence", label: "Evidence", fmt: v => cellWrap(v) }, { key: "caveats", label: "Before acting", fmt: v => cellWrap(v) }],
+      [...FF].sort((a, b) => b.score - a.score).slice(0, 300));
+
+    const k4 = card("cLibrary", "Check library", "What each check tests, where the pattern comes from, and why a flag can be innocent");
+    k4.table.hidden = false; k4.c.querySelector(".card-head button").remove(); k4.chart.hidden = true; k4.legend.hidden = true;
+    k4.table.style.maxHeight = "520px";
+    const status = Object.fromEntries(RUNLOG.map(r => [r.t, r]));
+    table(k4.table, [{ key: "id", label: "ID" }, { key: "name", label: "Check" }, { key: "area_name", label: "Area" },
+      { key: "st", label: "This build", fmt: (_, r) => status[r.id] ? (status[r.id].status === "ran" ? `${full(status[r.id].n_flags)} flags` : status[r.id].status) : "–" },
+      { key: "question", label: "Question", fmt: v => cellWrap(v) }, { key: "method", label: "Method", fmt: v => cellWrap(v) },
+      { key: "sources", label: "Sources", fmt: v => cellWrap(String(v).split(" | ").join("; ")) },
+      { key: "innocent_explanations", label: "Innocent explanations", fmt: v => cellWrap(String(v).split(" | ").join("; ")) }],
+      LIB.filter(r => S.area === "all" || r.area === S.area));
+  }
+
   // modelled exposure
   {
     const un = UNALLOC.filter(r => inMonths(r.month) && inComm(r.hs6) && inPort(r.port));
@@ -649,6 +728,7 @@ function update() {
       { key: "top", label: "Largest ship" }, { key: "share", label: "Its share", num: true, fmt: pct }, { key: "tot", label: "Est. value", num: true, fmt: usd }], spof);
   }
 }
+function cellWrap(text) { const d = document.createElement("div"); d.className = "cw"; d.textContent = text == null ? "–" : text; return d; }
 function titleCase(s) { return s == null ? "–" : String(s).toLowerCase().replace(/\b[a-z]/g, c => c.toUpperCase()); }
 
 // ---------- boot ----------

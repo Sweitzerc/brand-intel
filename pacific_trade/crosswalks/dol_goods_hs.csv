@@ -1,0 +1,5 @@
+good,country,iso3,labor_type,hs_prefixes,verified,notes
+Electronics,Malaysia,MYS,forced,8541;8542;8543,0,US DOL TVPRA List of Goods; confirm the current edition and HS mapping
+Tin ore,Congo (Kinshasa),COD,child,2609,0,US DOL TVPRA List of Goods; cassiterite
+Tantalum ore (coltan),Congo (Kinshasa),COD,child,2615,0,US DOL TVPRA List of Goods; HS 2615 also covers niobium/vanadium/zirconium ores
+Tungsten ore (wolframite),Congo (Kinshasa),COD,child,2611,0,US DOL TVPRA List of Goods

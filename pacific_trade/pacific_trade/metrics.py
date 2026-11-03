@@ -88,6 +88,7 @@ def census_vs_comtrade(census_national: pd.DataFrame, us_imports: pd.DataFrame,
     c = census_national[census_national["is_country"]]
     c = c.groupby(["hs6", "CTY_CODE", "month"], as_index=False)["GEN_VAL_MO"].sum()
     c = c.merge(countries[["cty_code", "m49_comtrade"]], left_on="CTY_CODE", right_on="cty_code", how="left")
+    us_imports = us_imports[us_imports["period"].astype(str).str.len() == 6]  # monthly rows only
     u = us_imports.assign(month=us_imports["period"].astype(str).str[:4] + "-" + us_imports["period"].astype(str).str[4:6],
                           hs6=us_imports["cmdCode"].astype(str))
     u = u.groupby(["hs6", "partnerCode", "month"], as_index=False)["primaryValue"].sum()

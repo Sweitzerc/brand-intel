@@ -33,6 +33,7 @@ python -m pacific_trade census-pull --start 2026-04 --end 2026-06   # crosswalk 
 python -m pacific_trade census-pull --start 2026-04 --end 2026-06 --national   # optional, for the Comtrade cross-check
 python -m pacific_trade comtrade-pull --year 2025 --months 202604 202605 202606
 python -m pacific_trade portcalls --start 2026-04-01 --end 2026-06-30
+python -m pacific_trade lists-fetch                                 # sanctions / export-control lists for red flags
 python -m pacific_trade build --csv                                 # --method draft_drop for the sensitivity run
 ```
 
@@ -79,6 +80,34 @@ The dashboard embeds the tables it uses, so anyone who receives the file can see
 - **Allocation (`build --method`):** port-month `VES_WGT_MO`/`VES_VAL_MO` is split across dry-cargo (type 70–79) calls in proportion to `length × width × arrival draft` (`capacity`), or to the draft drop at berth (`draft_drop`, falling back to capacity × the median drop ratio). Missing dimensions are filled with the port-month median. Tankers are excluded.
 - **Joins:** Census `PORT` = port of unlading ↔ crosswalk `schedule_d`. Census `CTY_CODE` is **country of origin**, not the country the goods were shipped from. It maps to Comtrade M49 through `crosswalks/countries.csv` (Taiwan = 490).
 - **HHI** uses the 0–10,000 scale.
+
+## Red flags
+
+`build` runs a library of red-flag checks (`pacific_trade/redflags/`) and adds them to the report and to a "Red flags" section of the dashboard. **A flag is a lead for an analyst, not a finding.** Each check documents the question it asks, its method, the typology source it comes from, the data it needs, and the innocent explanations to rule out (`typology_library` table, and the check library on the dashboard). Checks whose inputs are missing are skipped and listed as such.
+
+| ID | Area | Check | Needs |
+|---|---|---|---|
+| TBML-PRICE | Trade-based money laundering | Unit-price outlier (robust z of $/kg within HS6) | Census |
+| TBML-MIRROR | Trade-based money laundering | Mirror-trade gap: US-reported imports vs partner-reported exports | `comtrade-pull` |
+| TBML-EXCEED | Trade-based money laundering | US imports from an origin exceed that origin's total exports | Census + Comtrade |
+| TBML-SURGE | Trade-based money laundering | A (minor-producer) origin's share jumps: possible transshipment | Census (+ Comtrade) |
+| SANC-VESSEL | Sanctions & export controls | AIS vessel matches a list by IMO/MMSI (or name, weaker) | AIS + `lists-fetch` |
+| SANC-IDENTITY | Sanctions & export controls | Identity manipulation: shared MMSI, bad IMO check digit, flag/name changes | AIS |
+| SANC-DARK | Sanctions & export controls | AIS silence inside receiver coverage while the ship moved | AIS |
+| SANC-COUNTRY | Sanctions & export controls | Origin under comprehensive sanctions, on a FATF list, or high Basel AML score | `crosswalks/country_risk.csv` |
+| FL-DOL-GOODS | Forced labour | Good and origin on the DOL child/forced labour list | `crosswalks/dol_goods_hs.csv` |
+| FL-TIP | Forced labour | Origin ranked Tier 3 in the TIP report | `crosswalks/country_risk.csv` |
+
+Flags roll up per entity (trade flow, trade lane, origin country, vessel) as `1 - Π(1 - score)`, with repeats of one check counted once, into `red_flag_entities`.
+
+**Reference data you maintain:**
+- `python -m pacific_trade lists-fetch` downloads the OFAC SDN list and the US Consolidated Screening List (which includes the BIS Entity List). Add `--opensanctions` for the OpenSanctions consolidated file (EU, UK, UN and more); it is free for non-commercial use and needs a licence for commercial use. Put any other list, such as the DHS UFLPA Entity List, in `data/ref/lists/custom/` as a CSV with a `name` column. The download URLs were not reachable from the environment this was built in, so check them on the first run.
+- `crosswalks/country_risk.csv` ships empty on purpose. Fill it from the current FATF lists, the Basel AML Index, OFAC programmes and the State Department TIP report, and record the `as_of` date. Ratings change several times a year.
+- `crosswalks/dol_goods_hs.csv` maps a few DOL-listed goods to HS prefixes and is marked `verified=0`. Check it against the current DOL list.
+
+**Screening names.** Census and Comtrade carry no company names. If you have importer, supplier or owner names (from bills of lading, a client list, a corporate registry), screen them with `python -m pacific_trade screen names.csv`. Matching is fuzzy, so every hit needs a human check against the official list.
+
+**Adding a check.** Write a function decorated with `@typology(...)` in one of the modules (or a new one imported in `framework.run_all`), return rows built with `make_flags`, and add a test. It appears in the report, the dashboard and the library automatically.
 
 ## Open items before publishing results
 
