@@ -1,0 +1,32 @@
+# Publishes this repo to a Hugging Face Space every time main changes.
+#
+# One-time setup (GitHub repo -> Settings -> Secrets and variables -> Actions):
+#   Secret   HF_TOKEN  = a Hugging Face access token with "write" permission
+#   Variable HF_SPACE  = your Space, e.g. "your-hf-username/brand-intel"
+# Until both are set this workflow skips itself.
+#
+# GitHub is the source of truth: edits made directly on the Space are
+# overwritten on the next deploy, so change config.yaml here instead.
+
+name: Deploy to Hugging Face Space
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    if: ${{ vars.HF_SPACE != '' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Push to Space
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          HF_SPACE: ${{ vars.HF_SPACE }}
+        run: |
+          if [ -z "$HF_TOKEN" ]; then echo "::error::HF_TOKEN secret is not set"; exit 1; fi
+          git push --force "https://${HF_SPACE%%/*}:${HF_TOKEN}@huggingface.co/spaces/${HF_SPACE}" HEAD:main
