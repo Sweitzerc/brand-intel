@@ -26,6 +26,14 @@ It uses free public data only and needs no API keys.
 | **Evidence Locker** | Saves a Wayback Machine copy of a page and logs a SHA-256 fingerprint of its content | [auto-archiver](https://github.com/bellingcat/auto-archiver) |
 | **Toolkit** | Links to more Bellingcat tools that are useful for brand work | |
 
+## Try it in your browser (no install)
+
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Sweitzerc/brand-intel/blob/main/notebooks/brand_intel_colab.ipynb)
+
+Click the button, sign in with a Google account, then choose **Runtime → Run all**. About 2 minutes later the
+full dashboard appears at the bottom of the page, running free on Google's computers. It stops when you close
+the tab, and scan history isn't kept between sessions.
+
 ## Run it
 
 ```bash
