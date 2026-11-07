@@ -1,0 +1,886 @@
+<title>GeoTrack COP</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Barlow+Semi+Condensed:wght@600;700&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+  /* Layout: ops console. Header bar; left rail = shipment manifest; centre = map + selected shipment.
+     Signage-inspired type (Barlow, DIN-like) with a hi-vis amber accent from road and depot markings. */
+  :root {
+    --bg: #eef1f4;
+    --surface: #ffffff;
+    --sunk: #e5e9ee;
+    --line: #cfd6de;
+    --fg: #17202b;
+    --muted: #586474;
+    --faint: #8792a1;
+    --accent: #c25a00;          /* hi-vis amber, darkened for contrast on light */
+    --accent-ink: #ffffff;
+    --accent-soft: rgba(194, 90, 0, .12);
+    --move: #2161c4;  --move-soft: rgba(33, 97, 196, .12);
+    --ok: #12805a;    --ok-soft: rgba(18, 128, 90, .12);
+    --hold: #a86a00;  --hold-soft: rgba(168, 106, 0, .14);
+    --bad: #c23434;   --bad-soft: rgba(194, 52, 52, .11);
+    --map: #dde3ea; --map-grid: #cbd3dc; --map-route: #8c98a8; --map-sea: #d3dbe4;
+    --display: "Barlow Semi Condensed", "Barlow", "Arial Narrow", system-ui, sans-serif;
+    --body: "Barlow", system-ui, -apple-system, "Segoe UI", sans-serif;
+    --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0c1117; --surface: #141b24; --sunk: #0f151d; --line: #26313f;
+      --fg: #e4e9f0; --muted: #9aa6b6; --faint: #6c7889;
+      --accent: #ff9a2e; --accent-ink: #1a0f00; --accent-soft: rgba(255, 154, 46, .15);
+      --move: #6ea2ff; --move-soft: rgba(110, 162, 255, .15);
+      --ok: #3fcf95; --ok-soft: rgba(63, 207, 149, .14);
+      --hold: #f0b44a; --hold-soft: rgba(240, 180, 74, .16);
+      --bad: #ff7070; --bad-soft: rgba(255, 112, 112, .14);
+      --map: #0f161f; --map-grid: #1a2430; --map-route: #44536a; --map-sea: #0c121a;
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0c1117; --surface: #141b24; --sunk: #0f151d; --line: #26313f;
+    --fg: #e4e9f0; --muted: #9aa6b6; --faint: #6c7889;
+    --accent: #ff9a2e; --accent-ink: #1a0f00; --accent-soft: rgba(255, 154, 46, .15);
+    --move: #6ea2ff; --move-soft: rgba(110, 162, 255, .15);
+    --ok: #3fcf95; --ok-soft: rgba(63, 207, 149, .14);
+    --hold: #f0b44a; --hold-soft: rgba(240, 180, 74, .16);
+    --bad: #ff7070; --bad-soft: rgba(255, 112, 112, .14);
+    --map: #0f161f; --map-grid: #1a2430; --map-route: #44536a; --map-sea: #0c121a;
+    color-scheme: dark;
+  }
+
+  * { box-sizing: border-box; }
+  body { background: var(--bg); color: var(--fg); font: 15px/1.45 var(--body); }
+  .wrap { max-width: 1320px; margin: 0 auto; padding-block: 16px 32px;
+          padding-left: max(16px, env(safe-area-inset-left, 0px));
+          padding-right: max(16px, env(safe-area-inset-right, 0px));
+          display: flex; flex-direction: column; gap: 14px; }
+  button, input, select { font: inherit; color: inherit; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .mono { font-family: var(--mono); }
+  .num { font-variant-numeric: tabular-nums; }
+
+  /* header */
+  .top { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; justify-content: space-between; }
+  .brand { display: flex; align-items: center; gap: 12px; min-width: 0; }
+  .mark { width: 34px; height: 34px; border-radius: 7px; background: var(--accent); color: var(--accent-ink);
+          display: grid; place-items: center; flex: none; }
+  h1 { font: 700 24px/1 var(--display); letter-spacing: .01em; margin: 0; text-wrap: balance; }
+  .tag { color: var(--muted); font-size: 13px; margin-top: 3px; }
+  .tools { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .chip { font: 600 11px/1 var(--mono); letter-spacing: .04em; text-transform: uppercase;
+          padding: 6px 8px; border-radius: 5px; border: 1px solid var(--line); background: var(--surface);
+          color: var(--muted); white-space: nowrap; }
+  .chip.live { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 45%, var(--line)); }
+  .chip.warn { color: var(--hold); border-color: color-mix(in srgb, var(--hold) 45%, var(--line)); }
+  .chip.role { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 45%, var(--line)); }
+  .btn { border: 1px solid var(--line); background: var(--surface); padding: 8px 12px; border-radius: 7px;
+         font-weight: 600; font-size: 14px; cursor: pointer; display: inline-flex; gap: 6px; align-items: center; }
+  .btn:hover:not(:disabled) { border-color: var(--accent); }
+  .btn:disabled { opacity: .5; cursor: not-allowed; }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+  .btn.block { width: 100%; justify-content: center; }
+  .btn.sm { padding: 5px 9px; font-size: 13px; }
+  .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 7px; background: var(--surface); padding: 2px; }
+  .seg button { border: 0; background: none; padding: 5px 10px; border-radius: 5px; font-size: 13px; font-weight: 600;
+                color: var(--muted); cursor: pointer; }
+  .seg button[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent); }
+
+  .notice { padding: 10px 12px; border-radius: 8px; border: 1px solid var(--line); background: var(--surface);
+            font-size: 14px; display: flex; gap: 10px; align-items: center; justify-content: space-between; flex-wrap: wrap; }
+  .notice.err { border-color: var(--bad); color: var(--bad); background: var(--bad-soft); }
+  .notice.ok { border-color: var(--ok); color: var(--ok); background: var(--ok-soft); }
+
+  /* layout */
+  .grid { display: grid; grid-template-columns: minmax(0, 340px) minmax(0, 1fr); gap: 14px; align-items: start; }
+  @media (max-width: 900px) { .grid { grid-template-columns: minmax(0, 1fr); } }
+  .col { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+  .panel { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; min-width: 0; }
+  .ph { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 12px 14px 0; flex-wrap: wrap; }
+  .ph h2 { margin: 0; font: 700 13px/1.2 var(--display); text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+  .pb { padding: 12px 14px 14px; }
+
+  /* manifest */
+  .filters { display: flex; gap: 6px; flex-wrap: wrap; padding: 10px 14px 0; }
+  .filters button { border: 1px solid var(--line); background: var(--sunk); border-radius: 999px; padding: 3px 10px;
+                    font-size: 12px; font-weight: 600; color: var(--muted); cursor: pointer; }
+  .filters button[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+  .manifest { list-style: none; margin: 0; padding: 10px 8px 8px; display: flex; flex-direction: column; gap: 4px;
+              max-height: 560px; overflow-y: auto; }
+  .row { width: 100%; text-align: left; border: 1px solid transparent; background: none; border-radius: 8px;
+         padding: 9px 10px; cursor: pointer; display: grid; grid-template-columns: 4px minmax(0, 1fr); gap: 10px; }
+  .row:hover { background: var(--sunk); }
+  .row[aria-current="true"] { background: var(--sunk); border-color: var(--line); }
+  .stripe { border-radius: 2px; background: var(--faint); }
+  .r1 { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
+  .code { font: 600 13px var(--mono); }
+  .who { font-size: 13px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .bar { height: 4px; border-radius: 2px; background: var(--sunk); margin-top: 7px; overflow: hidden; }
+  .bar > i { display: block; height: 100%; background: var(--move); border-radius: 2px; }
+  .r3 { display: flex; justify-content: space-between; font: 11px var(--mono); color: var(--faint); margin-top: 5px; gap: 6px; }
+  .empty { padding: 22px 16px; color: var(--muted); font-size: 14px; display: flex; flex-direction: column; gap: 10px; align-items: flex-start; }
+
+  .pill { font: 600 10.5px/1 var(--mono); letter-spacing: .03em; padding: 4px 6px; border-radius: 4px; white-space: nowrap;
+          background: var(--sunk); color: var(--muted); }
+  .st-moving { background: var(--move-soft); color: var(--move); }
+  .st-done { background: var(--ok-soft); color: var(--ok); }
+  .st-hold { background: var(--hold-soft); color: var(--hold); }
+  .sp-moving { background: var(--move); } .sp-done { background: var(--ok); } .sp-hold { background: var(--hold); }
+
+  /* form */
+  form { display: flex; flex-direction: column; gap: 10px; }
+  .f2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  label { display: block; font-size: 12px; font-weight: 600; color: var(--muted); margin-bottom: 4px; }
+  input, select { width: 100%; background: var(--sunk); border: 1px solid var(--line); border-radius: 7px; padding: 8px 9px; font-size: 14px; }
+  input:focus, select:focus { border-color: var(--accent); outline: none; }
+
+  /* map */
+  .mapwrap { padding: 12px 14px 14px; }
+  .map { position: relative; border-radius: 8px; overflow: hidden; border: 1px solid var(--line); background: var(--map); }
+  .map svg { display: block; width: 100%; max-width: 100%; aspect-ratio: 5 / 3; cursor: crosshair; }
+  .maphint { font-size: 12px; color: var(--faint); }
+  .legend { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 12px; color: var(--muted); margin-top: 8px; }
+  .legend i { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 5px; vertical-align: -1px; }
+
+  /* detail */
+  .detail { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 14px; }
+  @media (max-width: 1100px) { .detail { grid-template-columns: minmax(0, 1fr); } }
+  .kv { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px 12px; }
+  @media (max-width: 560px) { .kv { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  .kv dt { font-size: 11px; color: var(--faint); text-transform: uppercase; letter-spacing: .06em; font-weight: 600; }
+  .kv dd { margin: 2px 0 0; font: 600 14px var(--mono); overflow-wrap: anywhere; }
+  .shead { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
+  .shead h3 { margin: 0; font: 700 22px/1.1 var(--display); }
+  .shead p { margin: 3px 0 0; color: var(--muted); font-size: 14px; }
+  .timeline { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; max-height: 430px; overflow-y: auto; }
+  .ev { display: grid; grid-template-columns: 14px minmax(0, 1fr); gap: 10px; padding-bottom: 12px; position: relative; }
+  .ev::before { content: ""; position: absolute; left: 6px; top: 14px; bottom: 0; width: 2px; background: var(--line); }
+  .ev:last-child::before { display: none; }
+  .dot { width: 14px; height: 14px; border-radius: 50%; border: 3px solid var(--surface); background: var(--faint); margin-top: 2px; position: relative; z-index: 1;
+         box-shadow: 0 0 0 1px var(--line); }
+  .dot.auto { background: var(--accent); }
+  .ev .t1 { display: flex; justify-content: space-between; gap: 8px; font-size: 14px; }
+  .ev .t2 { font-size: 13px; color: var(--muted); margin-top: 2px; }
+  .ev .t3 { display: flex; justify-content: space-between; gap: 8px; font: 11px var(--mono); color: var(--faint); margin-top: 3px; flex-wrap: wrap; }
+  .seal { font: 600 12px var(--mono); display: inline-flex; gap: 6px; align-items: center; }
+  .seal.ok { color: var(--ok); } .seal.bad { color: var(--bad); }
+  .hint { font-size: 12px; color: var(--faint); }
+
+  .toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+           max-width: min(560px, calc(100vw - 32px)); z-index: 20; }
+  @media (prefers-reduced-motion: no-preference) { .bar > i { transition: width .6s linear; } }
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <div class="brand">
+      <div class="mark" aria-hidden="true">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s7-6.2 7-12a7 7 0 1 0-14 0c0 5.8 7 12 7 12z"/><circle cx="12" cy="10" r="2.5"/></svg>
+      </div>
+      <div>
+        <h1>GeoTrack COP</h1>
+        <div class="tag">Oʻahu corridor · Honolulu Port → Pearl City Depot → Windward Terminal</div>
+      </div>
+    </div>
+    <div class="tools">
+      <span id="connChip" class="chip warn">Connecting…</span>
+      <span id="roleChip" class="chip role" hidden></span>
+      <div id="actAs" class="seg" role="group" aria-label="Act as" hidden>
+        <button id="actMgr" type="button" aria-pressed="true">Manager</button>
+        <button id="actOpr" type="button" aria-pressed="false">Operator</button>
+      </div>
+      <button id="clockBtn" class="btn sm" type="button" hidden>Pause simulation</button>
+      <button id="sampleBtn" class="btn sm" type="button" hidden>Dispatch sample trucks</button>
+    </div>
+  </header>
+
+  <div id="notice" class="notice" hidden><span id="noticeText"></span></div>
+
+  <div class="grid">
+    <div class="col">
+      <section class="panel" id="newPanel" hidden>
+        <div class="ph"><h2>New shipment</h2><span class="hint">Starts at Honolulu Port</span></div>
+        <div class="pb">
+          <form id="newForm">
+            <div class="f2">
+              <div><label for="fSender">Sender</label><input id="fSender" required maxlength="120" placeholder="Pacific Pharma"></div>
+              <div><label for="fRecipient">Recipient</label><input id="fRecipient" required maxlength="120" placeholder="Kailua Clinic"></div>
+            </div>
+            <div class="f2">
+              <div><label for="fDest">Destination</label>
+                <select id="fDest">
+                  <option value="ZONE-KAILUA-03">Windward Terminal (Kailua)</option>
+                  <option value="HUB-PEARL-02">Pearl City Depot</option>
+                </select></div>
+              <div><label for="fPriority">Priority</label>
+                <select id="fPriority">
+                  <option value="STANDARD">Standard</option>
+                  <option value="EXPRESS" selected>Express</option>
+                  <option value="CRITICAL">Critical (cold chain)</option>
+                </select></div>
+            </div>
+            <div><label for="fWeight">Weight (kg)</label><input id="fWeight" type="number" min="0.1" max="20000" step="0.1" value="15"></div>
+            <button class="btn primary block" type="submit" id="fSubmit">Create shipment</button>
+          </form>
+        </div>
+      </section>
+
+      <section class="panel" aria-labelledby="manifestH">
+        <div class="ph"><h2 id="manifestH">Manifest</h2><span class="hint num" id="manifestCount"></span></div>
+        <div class="filters" role="group" aria-label="Filter shipments">
+          <button type="button" data-filter="active" aria-pressed="true">Active</button>
+          <button type="button" data-filter="exceptions" aria-pressed="false">Exceptions</button>
+          <button type="button" data-filter="delivered" aria-pressed="false">Delivered</button>
+          <button type="button" data-filter="all" aria-pressed="false">All</button>
+        </div>
+        <ul class="manifest" id="manifest"></ul>
+      </section>
+    </div>
+
+    <div class="col">
+      <section class="panel" aria-labelledby="mapH">
+        <div class="ph"><h2 id="mapH">Common operational picture</h2>
+          <span class="maphint" id="mapHint">Select a shipment, then click the map to send a GPS ping for its truck</span></div>
+        <div class="mapwrap">
+          <div class="map"><svg id="map" viewBox="0 0 100 60" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Map of shipments and geofences"></svg></div>
+          <div class="legend">
+            <span><i style="background:var(--move)"></i>Moving</span>
+            <span><i style="background:var(--hold)"></i>Held / exception</span>
+            <span><i style="background:var(--ok)"></i>Delivered</span>
+            <span><i style="background:var(--faint)"></i>At hub / created</span>
+            <span>Dashed circles are geofences · grid squares are 3.1 km</span>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel" id="detailPanel" aria-live="polite">
+        <div class="pb" id="detail"></div>
+      </section>
+    </div>
+  </div>
+</div>
+<div class="toast" id="toastWrap" hidden><div class="notice" id="toast"><span id="toastText"></span></div></div>
+
+<script>
+(() => {
+  // ------------------------------------------------------------------ constants
+  const HUBS = [
+    { code: "HUB-HNL-01", name: "Honolulu Port Primary Hub", short: "Honolulu Port", type: "SORTING_HUB", lat: 21.3069, lng: -157.8583, radiusKm: 2.2, progress: 0 },
+    { code: "HUB-PEARL-02", name: "Pearl City Regional Depot", short: "Pearl City Depot", type: "REGIONAL_DEPOT", lat: 21.3890, lng: -157.9410, radiusKm: 2.0, progress: 50 },
+    { code: "ZONE-KAILUA-03", name: "Windward Delivery Terminal", short: "Windward Terminal", type: "CUSTOMER_DELIVERY_ZONE", lat: 21.3972, lng: -157.7394, radiusKm: 2.5, progress: 100 },
+  ];
+  const HUB = Object.fromEntries(HUBS.map(h => [h.code, h]));
+  const ROUTE = HUBS; // progress 0 -> 50 -> 100
+  const STATUSES = ["CREATED", "PICKED_UP", "IN_TRANSIT", "AT_HUB", "HELD_AT_HUB", "OUT_FOR_DELIVERY", "DELIVERED", "EXCEPTION_RETURN"];
+  const VALID = {
+    CREATED: ["PICKED_UP", "AT_HUB", "HELD_AT_HUB"],
+    PICKED_UP: ["IN_TRANSIT", "AT_HUB", "HELD_AT_HUB"],
+    IN_TRANSIT: ["AT_HUB", "OUT_FOR_DELIVERY", "HELD_AT_HUB"],
+    AT_HUB: ["IN_TRANSIT", "OUT_FOR_DELIVERY", "HELD_AT_HUB"],
+    HELD_AT_HUB: ["IN_TRANSIT", "AT_HUB", "OUT_FOR_DELIVERY"],
+    OUT_FOR_DELIVERY: ["DELIVERED", "HELD_AT_HUB"],
+    DELIVERED: [],
+    EXCEPTION_RETURN: ["AT_HUB"],
+  };
+  const OVERRIDES = ["HELD_AT_HUB", "AT_HUB", "EXCEPTION_RETURN"];
+  const MOVING = ["IN_TRANSIT", "OUT_FOR_DELIVERY"];
+  const REASONS = [
+    ["ROUTINE_SCAN", "Routine scan / handoff"],
+    ["WEATHER_DELAY", "Weather delay"],
+    ["VEHICLE_BREAKDOWN", "Vehicle breakdown"],
+    ["CUSTOMS_INSPECTION", "Customs inspection"],
+    ["DAMAGED_CARGO", "Damaged cargo"],
+    ["PROOF_OF_DELIVERY", "Proof of delivery (signed)"],
+  ];
+  const MS_PER_PCT = 4000;            // simulated trucks cover 1% of the corridor every 4 s
+  const PING_HOLD_MS = 30000;         // a real GPS ping pins the truck for 30 s
+  const SYSTEM_ACTOR = "SYS-GEOFENCE-01";
+
+  // ------------------------------------------------------------------ geometry
+  const R = 6371;
+  const rad = d => d * Math.PI / 180;
+  function haversineKm(a, b) {
+    const dLat = rad(b.lat - a.lat), dLng = rad(b.lng - a.lng);
+    const h = Math.sin(dLat / 2) ** 2 + Math.cos(rad(a.lat)) * Math.cos(rad(b.lat)) * Math.sin(dLng / 2) ** 2;
+    return 2 * R * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
+  }
+  function bearing(a, b) {
+    const y = Math.sin(rad(b.lng - a.lng)) * Math.cos(rad(b.lat));
+    const x = Math.cos(rad(a.lat)) * Math.sin(rad(b.lat)) - Math.sin(rad(a.lat)) * Math.cos(rad(b.lat)) * Math.cos(rad(b.lng - a.lng));
+    return Math.round(((Math.atan2(y, x) * 180 / Math.PI) + 360) % 360);
+  }
+  const LEG_KM = [haversineKm(ROUTE[0], ROUTE[1]), haversineKm(ROUTE[1], ROUTE[2])];
+  function routePoint(p) {
+    p = Math.max(0, Math.min(100, p));
+    const [a, b, r] = p <= 50 ? [ROUTE[0], ROUTE[1], p / 50] : [ROUTE[1], ROUTE[2], (p - 50) / 50];
+    return { lat: a.lat + (b.lat - a.lat) * r, lng: a.lng + (b.lng - a.lng) * r, heading: bearing(a, b) };
+  }
+  function remainingKm(p, end) {
+    const along = q => q <= 50 ? LEG_KM[0] * q / 50 : LEG_KM[0] + LEG_KM[1] * (q - 50) / 50;
+    return Math.max(0, along(end) - along(p));
+  }
+  function nearestProgress(pt) {
+    let best = 0, bd = Infinity;
+    for (let p = 0; p <= 100; p += 0.5) { const d = haversineKm(pt, routePoint(p)); if (d < bd) { bd = d; best = p; } }
+    return best;
+  }
+  const fencesAt = pt => HUBS.filter(h => haversineKm(pt, h) <= h.radiusKm).map(h => h.code);
+
+  // projection: equal km per unit on both axes
+  const LNG_MIN = -157.99, LNG_SPAN = 0.30, LAT_MID = 21.355;
+  const LAT_SPAN = LNG_SPAN * Math.cos(rad(LAT_MID)) * 0.6, LAT_TOP = LAT_MID + LAT_SPAN / 2;
+  const KM_PER_UNIT = LNG_SPAN * 111.32 * Math.cos(rad(LAT_MID)) / 100;
+  const proj = (lat, lng) => ({ x: (lng - LNG_MIN) / LNG_SPAN * 100, y: (LAT_TOP - lat) / LAT_SPAN * 60 });
+  const unproj = (x, y) => ({ lat: LAT_TOP - y / 60 * LAT_SPAN, lng: LNG_MIN + x / 100 * LNG_SPAN });
+
+  // ------------------------------------------------------------------ SHA-256 (sync, UTF-8)
+  const K = [], H0 = [];
+  { const primes = []; for (let n = 2; primes.length < 64; n++) if (primes.every(p => n % p)) primes.push(n);
+    const frac = x => (x - Math.floor(x)) * 4294967296 >>> 0;
+    primes.forEach((p, i) => { K[i] = frac(Math.cbrt(p)); if (i < 8) H0[i] = frac(Math.sqrt(p)); }); }
+  function sha256(str) {
+    const bytes = new TextEncoder().encode(str), l = bytes.length;
+    const buf = new Uint8Array(((l + 9 + 63) >> 6) << 6); buf.set(bytes); buf[l] = 0x80;
+    const dv = new DataView(buf.buffer);
+    dv.setUint32(buf.length - 4, (l * 8) >>> 0); dv.setUint32(buf.length - 8, Math.floor(l / 536870912));
+    const H = H0.slice(), W = new Uint32Array(64);
+    const rr = (x, n) => (x >>> n) | (x << (32 - n));
+    for (let i = 0; i < buf.length; i += 64) {
+      for (let t = 0; t < 16; t++) W[t] = dv.getUint32(i + t * 4);
+      for (let t = 16; t < 64; t++) {
+        const s0 = rr(W[t - 15], 7) ^ rr(W[t - 15], 18) ^ (W[t - 15] >>> 3);
+        const s1 = rr(W[t - 2], 17) ^ rr(W[t - 2], 19) ^ (W[t - 2] >>> 10);
+        W[t] = (W[t - 16] + s0 + W[t - 7] + s1) | 0;
+      }
+      let [a, b, c, d, e, f, g, h] = H;
+      for (let t = 0; t < 64; t++) {
+        const t1 = (h + (rr(e, 6) ^ rr(e, 11) ^ rr(e, 25)) + ((e & f) ^ (~e & g)) + K[t] + W[t]) | 0;
+        const t2 = ((rr(a, 2) ^ rr(a, 13) ^ rr(a, 22)) + ((a & b) ^ (a & c) ^ (b & c))) | 0;
+        h = g; g = f; f = e; e = (d + t1) | 0; d = c; c = b; b = a; a = (t1 + t2) | 0;
+      }
+      H[0] = (H[0] + a) | 0; H[1] = (H[1] + b) | 0; H[2] = (H[2] + c) | 0; H[3] = (H[3] + d) | 0;
+      H[4] = (H[4] + e) | 0; H[5] = (H[5] + f) | 0; H[6] = (H[6] + g) | 0; H[7] = (H[7] + h) | 0;
+    }
+    return H.map(x => (x >>> 0).toString(16).padStart(8, "0")).join("");
+  }
+  // Same recipe as the Python server: previous hash + event fields, "|" joined.
+  const eventHash = (prevHash, code, e) => sha256([prevHash || "GENESIS", code, e.eventType, e.previousStatus ?? "None",
+    e.newStatus, e.actor, e.reasonCode, e.notes, e.timestamp].join("|"));
+  function verifyChain(pkg) {
+    const evs = pkg.events || []; let prev = null;
+    for (let i = evs.length - 1; i >= 0; i--) {
+      if (eventHash(prev, pkg.code, evs[i]) !== evs[i].hash) return { ok: false, at: evs[i] };
+      prev = evs[i].hash;
+    }
+    return { ok: true, count: evs.length, head: prev };
+  }
+  window.__geotrack = { sha256, eventHash, verifyChain, routePoint, nearestProgress, fencesAt }; // for testing
+
+  // ------------------------------------------------------------------ helpers
+  const $ = id => document.getElementById(id);
+  const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+  const tabId = "tab-" + Math.random().toString(36).slice(2, 10);
+  const short = h => h ? h.slice(0, 8) + "…" + h.slice(-4) : "";
+  const pretty = s => String(s).replace(/_/g, " ").toLowerCase().replace(/^\w/, c => c.toUpperCase());
+  const stClass = s => MOVING.includes(s) || s === "PICKED_UP" ? "moving" : s === "DELIVERED" ? "done" : ["HELD_AT_HUB", "EXCEPTION_RETURN"].includes(s) ? "hold" : "";
+  function fmtTime(iso) { const d = new Date(iso); return isNaN(d) ? esc(iso) : d.toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit" }); }
+  function fmtDur(ms) { const s = Math.max(0, Math.round(ms / 1000)); return s >= 60 ? `${Math.floor(s / 60)}m ${String(s % 60).padStart(2, "0")}s` : `${s}s`; }
+
+  // ------------------------------------------------------------------ state
+  const S = {
+    db: null, user: null, myId: null, canWrite: false, isManager: false, actAs: "LOGISTICS_MANAGER",
+    pkgs: new Map(), clock: { paused: false, offsetMs: 0, frozenSim: 0 }, loaded: false,
+    selected: null, filter: "active", names: {}, chain: new Map(), busy: new Set(),
+  };
+  const role = () => !S.canWrite ? "VIEWER" : (S.isManager ? S.actAs : "OPERATOR");
+  const simNow = () => S.clock.paused ? S.clock.frozenSim : Date.now() - (S.clock.offsetMs || 0);
+  const endProgress = p => HUB[p.destinationHub]?.progress ?? 100;
+
+  function progressOf(p, sim = simNow()) {
+    const base = p.anchorProgress ?? 0;
+    if (!MOVING.includes(p.status)) return base;
+    return Math.min(endProgress(p), base + Math.max(0, sim - (p.anchorSim ?? sim)) / MS_PER_PCT);
+  }
+  function positionOf(p, sim = simNow()) {
+    if (p.gps && sim < p.gps.untilSim) return { lat: p.gps.lat, lng: p.gps.lng, heading: p.gps.heading ?? 0, pinned: true };
+    return routePoint(progressOf(p, sim));
+  }
+  function speedOf(p, sim = simNow()) {
+    if (!MOVING.includes(p.status) || progressOf(p, sim) >= endProgress(p)) return 0;
+    const seed = [...p.code].reduce((a, c) => a + c.charCodeAt(0), 0);
+    return Math.round((62 + 9 * Math.sin(sim / 9000 + seed)) * 10) / 10;
+  }
+  const etaMs = (p, sim = simNow()) => MOVING.includes(p.status) ? (endProgress(p) - progressOf(p, sim)) * MS_PER_PCT : null;
+
+  function transitionError(cur, target, r) {
+    if (cur === "DELIVERED") return "it is already delivered and locked";
+    if (cur === target) return `it is already ${pretty(cur).toLowerCase()}`;
+    if (VALID[cur]?.includes(target)) return null;
+    if (r === "LOGISTICS_MANAGER" && OVERRIDES.includes(target)) return null;
+    return `${pretty(cur)} can't go straight to ${pretty(target).toLowerCase()}`;
+  }
+  function allowedTargets(cur, r) {
+    return STATUSES.filter(t => !transitionError(cur, t, r));
+  }
+
+  // ------------------------------------------------------------------ notices
+  let toastTimer;
+  function toast(kind, msg) {
+    $("toast").className = "notice " + (kind === "error" ? "err" : "ok");
+    $("toastText").textContent = msg; $("toastWrap").hidden = false;
+    clearTimeout(toastTimer); toastTimer = setTimeout(() => { $("toastWrap").hidden = true; }, kind === "error" ? 7000 : 4000);
+  }
+  function notice(kind, msg) {
+    const n = $("notice"); if (!msg) { n.hidden = true; return; }
+    n.className = "notice" + (kind === "error" ? " err" : ""); $("noticeText").textContent = msg; n.hidden = false;
+  }
+
+  // ------------------------------------------------------------------ writes
+  // Every change to a shipment: take a short lease, re-read, validate on the fresh
+  // copy, then write once. Stops two people (or two tabs) from forking the custody chain.
+  async function mutate(code, fn) {
+    const ref = S.db.doc("packages/" + code);
+    let got = false;
+    for (let i = 0; i < 6 && !got; i++) {
+      const r = await ref.acquire({ holder: tabId, ttlMs: 4000 });
+      got = r.acquired; if (!got) await new Promise(res => setTimeout(res, 250 + Math.random() * 300));
+    }
+    if (!got) throw new Error("Someone else is updating this shipment. Try again in a moment.");
+    const snap = await ref.get();
+    if (!snap.exists) throw new Error(`Shipment ${code} no longer exists.`);
+    const fresh = structuredClone(snap.data());
+    const patch = fn(fresh);
+    if (patch) await ref.update(patch);
+    return patch;
+  }
+
+  function makeEvent(pkg, fields) {
+    const e = {
+      id: "evt-" + Math.random().toString(36).slice(2, 12),
+      timestamp: new Date().toISOString(),
+      actor: fields.actor, role: fields.role, eventType: fields.eventType,
+      previousStatus: fields.previousStatus ?? null, newStatus: fields.newStatus,
+      reasonCode: fields.reasonCode, notes: fields.notes, lat: fields.lat, lng: fields.lng,
+    };
+    e.hash = eventHash(pkg.events?.[0]?.hash || null, pkg.code, e);
+    return e;
+  }
+
+  // Applies a status change to a fresh copy of the shipment and returns the doc patch.
+  function transitionPatch(p, target, r, eventType, reasonCode, notes, actor) {
+    const err = transitionError(p.status, target, r);
+    if (err) throw new Error(`Not allowed: ${err}.`);
+    const sim = simNow();
+    const prog = target === "DELIVERED" ? endProgress(p) : progressOf(p, sim);
+    const pos = positionOf(p, sim);
+    const ev = makeEvent(p, {
+      actor, role: r, eventType, previousStatus: p.status, newStatus: target, reasonCode,
+      notes: notes || `${pretty(p.status)} → ${pretty(target).toLowerCase()}.`,
+      lat: +pos.lat.toFixed(5), lng: +pos.lng.toFixed(5),
+    });
+    return { status: target, anchorProgress: prog, anchorSim: sim, gps: p.gps && sim < p.gps.untilSim ? p.gps : null,
+             events: [ev, ...(p.events || [])], updatedAt: ev.timestamp };
+  }
+
+  // Geofence automation: which system transition (if any) a shipment needs right now.
+  function autoNeeded(p, sim = simNow()) {
+    const pos = positionOf(p, sim), fences = fencesAt(pos);
+    if (p.status === "IN_TRANSIT" && fences.includes(p.destinationHub))
+      return ["OUT_FOR_DELIVERY", "GEOFENCE_ENTRY", "ENTERED_DELIVERY_SECTOR", `Crossed the ${HUB[p.destinationHub].name} geofence.`];
+    if (p.status === "OUT_FOR_DELIVERY" && progressOf(p, sim) >= endProgress(p) && fences.includes(p.destinationHub))
+      return ["DELIVERED", "GEOFENCE_ARRIVAL_LOCK", "DESTINATION_POLYGON_MATCH", `Arrival verified inside the ${HUB[p.destinationHub].name} geofence.`];
+    return null;
+  }
+  async function runAutomation() {
+    if (!S.db || !S.canWrite || S.clock.paused) return;
+    for (const p of S.pkgs.values()) {
+      if (S.busy.has(p.code) || !autoNeeded(p)) continue;
+      S.busy.add(p.code);
+      mutate(p.code, fresh => {
+        const need = autoNeeded(fresh); if (!need) return null;
+        return transitionPatch(fresh, need[0], "SYSTEM_AUTOMATION", need[1], need[2], need[3], SYSTEM_ACTOR);
+      }).catch(() => {}).finally(() => setTimeout(() => S.busy.delete(p.code), 1500));
+    }
+  }
+
+  async function changeStatus(code, target, reason, notes) {
+    const r = role();
+    const eventType = r === "LOGISTICS_MANAGER" ? "STATUS_OVERRIDE" : "CUSTODY_HANDOFF_SCAN";
+    await mutate(code, p => transitionPatch(p, target, r, eventType, reason, notes.trim(), S.myId));
+    toast("ok", `${code} is now ${pretty(target).toLowerCase()}.`);
+  }
+
+  async function sendPing(code, lat, lng) {
+    let result;
+    await mutate(code, p => {
+      const sim = simNow();
+      if (p.status === "DELIVERED") throw new Error(`${code} is delivered; its truck is no longer tracked.`);
+      const from = positionOf(p, sim);
+      const near = Math.min(endProgress(p), nearestProgress({ lat, lng }));
+      const gps = { lat: +lat.toFixed(5), lng: +lng.toFixed(5), heading: bearing(from, { lat, lng }), untilSim: sim + PING_HOLD_MS,
+                    at: new Date().toISOString(), by: S.myId };
+      let draft = { ...p, gps, anchorProgress: near, anchorSim: sim + PING_HOLD_MS };
+      const fences = fencesAt({ lat, lng });
+      result = fences;
+      let patch = { gps, anchorProgress: near, anchorSim: sim + PING_HOLD_MS };
+      if (draft.status === "IN_TRANSIT" && fences.includes(draft.destinationHub)) {
+        const t = transitionPatch(draft, "OUT_FOR_DELIVERY", "SYSTEM_AUTOMATION", "GEOFENCE_ENTRY", "ENTERED_DELIVERY_SECTOR",
+          `GPS ping inside the ${HUB[draft.destinationHub].name} geofence.`, SYSTEM_ACTOR);
+        patch = { ...patch, status: t.status, events: t.events, updatedAt: t.updatedAt };
+      }
+      return patch;
+    });
+    const where = result.length ? result.map(c => HUB[c].short).join(", ") : "outside every geofence";
+    toast("ok", `GPS ping for ${code}: ${where}. The truck holds there for 30 s, then rejoins the route.`);
+  }
+
+  async function newCode() {
+    for (let i = 0; i < 8; i++) {
+      const code = "PKG-" + (10000 + Math.floor(Math.random() * 90000));
+      if (S.pkgs.has(code)) continue;
+      const snap = await S.db.doc("packages/" + code).get();
+      if (!snap.exists) return code;
+    }
+    throw new Error("Couldn't find a free tracking code. Try again.");
+  }
+  async function createShipment({ sender, recipient, destinationHub, priority, weightKg, status = "CREATED", progress = 0, extraEvents = [] }) {
+    const code = await newCode();
+    const r = role();
+    const pkg = {
+      code, sender, recipient, originHub: "HUB-HNL-01", destinationHub, priority, weightKg,
+      vehicleId: "VEH-" + (1000 + Math.floor(Math.random() * 9000)) + "-" + ["ALPHA", "BRAVO", "DELTA", "ECHO", "KILO"][Math.floor(Math.random() * 5)],
+      status: "CREATED", anchorProgress: 0, anchorSim: simNow(), gps: null,
+      battery: 80 + Math.floor(Math.random() * 20), network: Math.random() < .7 ? "5G" : "LTE",
+      createdAt: new Date().toISOString(), events: [],
+    };
+    pkg.events = [makeEvent(pkg, { actor: S.myId, role: r, eventType: "MANIFEST_INGESTED", previousStatus: null, newStatus: "CREATED",
+      reasonCode: "INITIAL_SCAN", notes: `Manifest created (${weightKg} kg, ${priority.toLowerCase()}).`, lat: HUB["HUB-HNL-01"].lat, lng: HUB["HUB-HNL-01"].lng })];
+    for (const [target, reason, notes] of extraEvents) {
+      const t = transitionPatch(pkg, target, r === "VIEWER" ? "OPERATOR" : r, "CUSTODY_HANDOFF_SCAN", reason, notes, S.myId);
+      Object.assign(pkg, t);
+    }
+    if (progress) { pkg.anchorProgress = progress; pkg.anchorSim = simNow(); }
+    pkg.updatedAt = pkg.events[0].timestamp;
+    await S.db.doc("packages/" + code).set(pkg);
+    return code;
+  }
+
+  async function dispatchSamples() {
+    const samples = [
+      { sender: "Pacific Medical Supply", recipient: "Kailua Regional Clinic", destinationHub: "ZONE-KAILUA-03", priority: "CRITICAL", weightKg: 18.4, progress: 8 },
+      { sender: "Island Cold Chain Co.", recipient: "Windward Mall Pharmacy", destinationHub: "ZONE-KAILUA-03", priority: "EXPRESS", weightKg: 11.2, progress: 55 },
+      { sender: "AeroTech Avionics", recipient: "Pearl City Hangar 4", destinationHub: "HUB-PEARL-02", priority: "STANDARD", weightKg: 54, progress: 20 },
+    ];
+    const codes = [];
+    for (const s of samples) {
+      codes.push(await createShipment({ ...s, extraEvents: [
+        ["PICKED_UP", "ROUTINE_SCAN", "Loaded at Honolulu Port."],
+        ["IN_TRANSIT", "ROUTINE_SCAN", "Departed Honolulu Port."],
+      ] }));
+    }
+    S.selected = codes[0]; location.hash = codes[0];
+    toast("ok", `Dispatched ${codes.join(", ")}.`);
+  }
+
+  async function toggleClock() {
+    const c = S.clock, now = Date.now();
+    const next = c.paused
+      ? { paused: false, offsetMs: now - c.frozenSim, frozenSim: c.frozenSim }
+      : { paused: true, offsetMs: c.offsetMs || 0, frozenSim: now - (c.offsetMs || 0) };
+    await S.db.doc("config/clock").set(next);
+  }
+
+  // ------------------------------------------------------------------ names
+  async function resolveNames(ids) {
+    const missing = [...new Set(ids)].filter(id => id && !(id in S.names) && !/^(USR|SYS)-/.test(id));
+    if (!missing.length || !S.user?.profiles) return;
+    missing.forEach(id => { S.names[id] = ""; });
+    try {
+      const ps = await S.user.profiles(missing);
+      for (const id of missing) S.names[id] = ps?.[id]?.name || "";
+      renderDetail();
+    } catch (_) {}
+  }
+  const actorName = a => a === SYSTEM_ACTOR ? "Geofence engine" : (a === S.myId ? "You" : (S.names[a] || (/^(USR|SYS)-/.test(a) ? a : "Team member")));
+
+  // ------------------------------------------------------------------ render
+  function visiblePkgs() {
+    const all = [...S.pkgs.values()].sort((a, b) => (b.updatedAt || "").localeCompare(a.updatedAt || ""));
+    return all.filter(p => S.filter === "all" ? true
+      : S.filter === "delivered" ? p.status === "DELIVERED"
+      : S.filter === "exceptions" ? ["HELD_AT_HUB", "EXCEPTION_RETURN"].includes(p.status)
+      : p.status !== "DELIVERED");
+  }
+
+  function renderChrome() {
+    const r = role();
+    const conn = $("connChip");
+    if (!S.db) { conn.textContent = S.loaded ? "Offline preview" : "Connecting…"; conn.className = "chip warn"; }
+    else if (S.clock.paused) { conn.textContent = "Simulation paused"; conn.className = "chip warn"; }
+    else { conn.textContent = "Live"; conn.className = "chip live"; }
+    const rc = $("roleChip");
+    rc.hidden = !S.db || S.isManager;
+    rc.textContent = r === "VIEWER" ? "View only" : "Operator";
+    $("actAs").hidden = !S.isManager;
+    $("actMgr").setAttribute("aria-pressed", String(S.actAs === "LOGISTICS_MANAGER"));
+    $("actOpr").setAttribute("aria-pressed", String(S.actAs === "OPERATOR"));
+    $("clockBtn").hidden = !S.isManager;
+    $("clockBtn").textContent = S.clock.paused ? "Resume simulation" : "Pause simulation";
+    $("sampleBtn").hidden = !S.isManager;
+    $("newPanel").hidden = !S.canWrite;
+    $("mapHint").textContent = S.canWrite ? "Select a shipment, then click the map to send a GPS ping for its truck"
+                                          : "Live positions. Ask the owner for access to update shipments.";
+  }
+
+  function renderManifest() {
+    const list = visiblePkgs();
+    $("manifestCount").textContent = `${list.length} of ${S.pkgs.size}`;
+    if (!S.db && S.loaded) {
+      $("manifest").innerHTML = `<li class="empty">Live shipment data isn't available in this view. Open the app on claude.ai to see and update shipments.</li>`;
+      return;
+    }
+    if (!S.loaded) { $("manifest").innerHTML = `<li class="empty">Loading shipments…</li>`; return; }
+    if (!S.pkgs.size) {
+      $("manifest").innerHTML = `<li class="empty">No shipments yet.${S.isManager ? ` Create one above, or dispatch three sample trucks.
+        <button class="btn sm primary" type="button" data-act="samples">Dispatch sample trucks</button>` : S.canWrite ? " Create one above." : ""}</li>`;
+      return;
+    }
+    if (!list.length) { $("manifest").innerHTML = `<li class="empty">Nothing in this view.</li>`; return; }
+    const sim = simNow();
+    $("manifest").innerHTML = list.map(p => {
+      const prog = progressOf(p, sim), cls = stClass(p.status), eta = etaMs(p, sim);
+      return `<li><button class="row" type="button" data-code="${esc(p.code)}" aria-current="${p.code === S.selected}">
+        <span class="stripe ${cls ? "sp-" + cls : ""}"></span>
+        <span style="min-width:0">
+          <span class="r1"><span class="code">${esc(p.code)}</span><span class="pill st-${cls}">${esc(pretty(p.status))}</span></span>
+          <span class="who" style="display:block">${esc(p.sender)} → ${esc(p.recipient)}</span>
+          <span class="bar"><i data-bar="${esc(p.code)}" style="width:${prog.toFixed(1)}%"></i></span>
+          <span class="r3 num"><span>${esc(HUB[p.destinationHub]?.short || p.destinationHub)}</span>
+            <span data-eta="${esc(p.code)}">${eta != null ? "ETA " + fmtDur(eta) : Math.round(prog) + "%"}</span></span>
+        </span></button></li>`;
+    }).join("");
+  }
+
+  function renderLiveBits() {
+    const sim = simNow();
+    for (const p of S.pkgs.values()) {
+      const bar = document.querySelector(`[data-bar="${CSS.escape(p.code)}"]`);
+      if (bar) bar.style.width = progressOf(p, sim).toFixed(1) + "%";
+      const eta = document.querySelector(`[data-eta="${CSS.escape(p.code)}"]`);
+      if (eta) { const e = etaMs(p, sim); eta.textContent = e != null ? "ETA " + fmtDur(e) : Math.round(progressOf(p, sim)) + "%"; }
+    }
+    const p = S.pkgs.get(S.selected);
+    if (p) {
+      const pos = positionOf(p, sim), fences = fencesAt(pos);
+      const set = (id, v) => { const el = $(id); if (el) el.textContent = v; };
+      set("dPos", `${pos.lat.toFixed(4)}, ${pos.lng.toFixed(4)}`);
+      set("dSpeed", `${speedOf(p, sim)} km/h`);
+      set("dProg", `${Math.round(progressOf(p, sim))}%`);
+      const e = etaMs(p, sim); set("dEta", e != null ? fmtDur(e) : "—");
+      set("dFence", fences.length ? fences.map(c => HUB[c].short).join(", ") : "None");
+      set("dHeading", `${pos.heading}°`);
+      set("dPin", pos.pinned ? `GPS ping · rejoins route in ${fmtDur(p.gps.untilSim - sim)}` : (MOVING.includes(p.status) ? "Simulated on route" : "Stationary"));
+    }
+  }
+
+  function renderMap() {
+    const sim = simNow(), C = { grid: css("--map-grid"), route: css("--map-route"), muted: css("--muted"), fg: css("--fg"),
+      move: css("--move"), ok: css("--ok"), hold: css("--hold"), faint: css("--faint"), accent: css("--accent"), surface: css("--surface") };
+    let s = "";
+    for (let x = 10; x < 100; x += 10) s += `<line x1="${x}" y1="0" x2="${x}" y2="60" stroke="${C.grid}" stroke-width="0.15"/>`;
+    for (let y = 10; y < 60; y += 10) s += `<line x1="0" y1="${y}" x2="100" y2="${y}" stroke="${C.grid}" stroke-width="0.15"/>`;
+    const sb = 5 / KM_PER_UNIT;
+    s += `<g font-family="JetBrains Mono, monospace"><line x1="3" y1="57" x2="${3 + sb}" y2="57" stroke="${C.muted}" stroke-width="0.4"/>
+      <line x1="3" y1="56.2" x2="3" y2="57.8" stroke="${C.muted}" stroke-width="0.3"/><line x1="${3 + sb}" y1="56.2" x2="${3 + sb}" y2="57.8" stroke="${C.muted}" stroke-width="0.3"/>
+      <text x="${3 + sb + 1}" y="57.6" fill="${C.muted}" font-size="1.7">5 km</text>
+      <text x="97" y="4" text-anchor="end" fill="${C.muted}" font-size="1.7">N ↑</text></g>`;
+    s += `<polyline points="${ROUTE.map(w => { const p = proj(w.lat, w.lng); return p.x.toFixed(2) + "," + p.y.toFixed(2); }).join(" ")}"
+           fill="none" stroke="${C.route}" stroke-width="0.6" stroke-dasharray="1.6 1"/>`;
+    for (const h of HUBS) {
+      const p = proj(h.lat, h.lng), r = h.radiusKm / KM_PER_UNIT, c = h.type === "CUSTOMER_DELIVERY_ZONE" ? C.ok : C.move;
+      s += `<circle cx="${p.x}" cy="${p.y}" r="${r}" fill="${c}" fill-opacity="0.07" stroke="${c}" stroke-opacity="0.55" stroke-width="0.25" stroke-dasharray="0.9 0.6"/>
+            <rect x="${p.x - 0.7}" y="${p.y - 0.7}" width="1.4" height="1.4" fill="${c}"/>
+            <text x="${p.x}" y="${p.y + r + 2.6}" text-anchor="middle" fill="${C.muted}" font-size="1.9" font-family="Barlow, sans-serif" font-weight="600">${esc(h.short)}</text>`;
+    }
+    const sel = S.pkgs.get(S.selected);
+    if (sel && MOVING.includes(sel.status)) {
+      const pts = []; const end = progressOf(sel, sim);
+      for (let q = 0; q <= end; q += 1) { const p = routePoint(q), m = proj(p.lat, p.lng); pts.push(m.x.toFixed(2) + "," + m.y.toFixed(2)); }
+      if (pts.length > 1) s += `<polyline points="${pts.join(" ")}" fill="none" stroke="${C.accent}" stroke-width="0.7" stroke-opacity="0.7"/>`;
+    }
+    const placed = [];
+    const ordered = [...S.pkgs.values()].filter(p => S.filter === "all" || visiblePkgs().includes(p) || p.code === S.selected)
+      .sort((a, b) => (a.code === S.selected) - (b.code === S.selected));
+    for (const p of ordered) {
+      const pos = positionOf(p, sim), m = proj(pos.lat, pos.lng), cls = stClass(p.status);
+      const color = cls === "moving" ? C.move : cls === "done" ? C.ok : cls === "hold" ? C.hold : C.faint;
+      const stack = placed.filter(q => Math.hypot(q.x - m.x, q.y - m.y) < 2.5).length; placed.push(m);
+      const isSel = p.code === S.selected;
+      s += `<g data-code="${esc(p.code)}" style="cursor:pointer">
+        ${isSel ? `<circle cx="${m.x}" cy="${m.y}" r="2.6" fill="none" stroke="${C.accent}" stroke-width="0.4"/>` : ""}
+        ${pos.pinned ? `<circle cx="${m.x}" cy="${m.y}" r="1.9" fill="none" stroke="${color}" stroke-width="0.25" stroke-dasharray="0.4 0.4"/>` : ""}
+        <circle cx="${m.x}" cy="${m.y}" r="1.25" fill="${color}" stroke="${C.surface}" stroke-width="0.35"/>
+        <text x="${m.x}" y="${m.y - 2.3 - stack * 2.3}" text-anchor="middle" fill="${isSel ? C.accent : C.fg}" font-size="1.85" font-weight="600" font-family="JetBrains Mono, monospace">${esc(p.code)}</text>
+      </g>`;
+    }
+    $("map").innerHTML = s;
+  }
+
+  function renderDetail() {
+    const box = $("detail"), p = S.pkgs.get(S.selected);
+    if (!p) {
+      box.innerHTML = `<div class="empty" style="padding:8px 0">${S.pkgs.size ? "Select a shipment from the manifest or the map to see its custody chain and update it." : "Shipment details appear here."}</div>`;
+      return;
+    }
+    const r = role(), targets = r === "VIEWER" ? [] : allowedTargets(p.status, r);
+    const chain = S.chain.get(p.code) || verifyChain(p);
+    const cls = stClass(p.status);
+    resolveNames((p.events || []).map(e => e.actor).concat(p.gps?.by || []));
+    const prevTarget = $("dTarget")?.value, prevReason = $("dReason")?.value, prevNotes = $("dNotes")?.value || "";
+    box.innerHTML = `
+      <div class="shead">
+        <div>
+          <div class="row1" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+            <h3 class="mono">${esc(p.code)}</h3><span class="pill st-${cls}">${esc(pretty(p.status))}</span>
+            <span class="pill">${esc(p.priority)}</span>
+          </div>
+          <p>${esc(p.sender)} → <strong>${esc(p.recipient)}</strong> · ${esc(HUB[p.originHub]?.short)} to ${esc(HUB[p.destinationHub]?.short)}</p>
+        </div>
+        <span class="seal ${chain.ok ? "ok" : "bad"}" title="${chain.ok ? "Every custody event's SHA-256 hash links to the one before it" : "An event no longer matches its hash"}">
+          ${chain.ok ? `✓ Custody chain intact · ${chain.count} events` : "✕ Custody chain broken"}</span>
+      </div>
+      <dl class="kv num">
+        <div><dt>Position</dt><dd id="dPos"></dd></div>
+        <div><dt>Speed</dt><dd id="dSpeed"></dd></div>
+        <div><dt>Route progress</dt><dd id="dProg"></dd></div>
+        <div><dt>ETA (sim)</dt><dd id="dEta"></dd></div>
+        <div><dt>Geofence</dt><dd id="dFence"></dd></div>
+        <div><dt>Heading</dt><dd id="dHeading"></dd></div>
+        <div><dt>Truck</dt><dd>${esc(p.vehicleId)}</dd></div>
+        <div><dt>Weight</dt><dd>${esc(p.weightKg)} kg</dd></div>
+      </dl>
+      <div class="hint" id="dPin" style="margin-top:8px"></div>
+      <div class="detail" style="margin-top:16px">
+        <div>
+          <div class="ph" style="padding:0 0 10px"><h2>Update custody</h2></div>
+          ${r === "VIEWER" ? `<p class="hint">You can watch this shipment. People the owner shares the app with as contributors or editors can scan and update it.</p>`
+            : targets.length === 0 ? `<p class="hint">${p.status === "DELIVERED" ? "Delivered shipments are locked." : `No moves are open to ${r === "OPERATOR" ? "operators" : "managers"} from this status.`}</p>`
+            : `<form id="statusForm">
+                <div><label for="dTarget">New status</label><select id="dTarget">${targets.map(t => `<option value="${t}">${esc(pretty(t))}${VALID[p.status].includes(t) ? "" : " (manager override)"}</option>`).join("")}</select></div>
+                <div><label for="dReason">Reason</label><select id="dReason">${REASONS.map(([v, l]) => `<option value="${v}">${esc(l)}</option>`).join("")}</select></div>
+                <div><label for="dNotes">Notes</label><input id="dNotes" maxlength="500" placeholder="Scan location or exception details"></div>
+                <button class="btn primary block" type="submit" id="dSubmit">Record ${r === "LOGISTICS_MANAGER" ? "status override" : "custody scan"}</button>
+                <p class="hint" style="margin:0">Recorded as ${r === "LOGISTICS_MANAGER" ? "manager" : "operator"}. Each event is hashed together with the previous one, so later edits show up as a broken chain.</p>
+              </form>`}
+        </div>
+        <div>
+          <div class="ph" style="padding:0 0 10px"><h2>Chain of custody</h2></div>
+          <ol class="timeline">${(p.events || []).map(e => `
+            <li class="ev"><span class="dot ${e.role === "SYSTEM_AUTOMATION" ? "auto" : ""}"></span><div style="min-width:0">
+              <div class="t1"><span>${esc(e.previousStatus ? pretty(e.previousStatus) + " → " : "")}<strong>${esc(pretty(e.newStatus))}</strong></span></div>
+              <div class="t2">${esc(e.notes)}</div>
+              <div class="t3"><span>${esc(fmtTime(e.timestamp))} · ${esc(actorName(e.actor))} · ${esc(pretty(e.reasonCode))}</span><span title="${esc(e.hash)}">${esc(short(e.hash))}</span></div>
+            </div></li>`).join("")}</ol>
+        </div>
+      </div>`;
+    if ($("dTarget") && targets.includes(prevTarget)) $("dTarget").value = prevTarget;
+    if ($("dReason") && prevReason) $("dReason").value = prevReason;
+    if ($("dNotes")) $("dNotes").value = prevNotes;
+    renderLiveBits();
+  }
+
+  function renderAll() { renderChrome(); renderManifest(); renderMap(); renderDetail(); }
+
+  // ------------------------------------------------------------------ events
+  document.addEventListener("click", e => {
+    const t = e.target.closest("[data-code]");
+    if (t && (t.closest("#manifest") || t.closest("#map"))) {
+      e.stopPropagation(); S.selected = t.dataset.code; history.replaceState(null, "", "#" + S.selected);
+      renderManifest(); renderMap(); renderDetail(); return;
+    }
+    const f = e.target.closest("[data-filter]");
+    if (f) { S.filter = f.dataset.filter; document.querySelectorAll("[data-filter]").forEach(b => b.setAttribute("aria-pressed", String(b === f)));
+             renderManifest(); renderMap(); return; }
+    if (e.target.closest("[data-act='samples']")) guarded(dispatchSamples)();
+  });
+  const guarded = fn => async (...a) => { try { await fn(...a); } catch (err) { toast("error", err?.message || "That didn't go through. Try again."); } };
+
+  $("map").addEventListener("click", guarded(async e => {
+    if (e.target.closest("[data-code]")) return;
+    if (!S.db || !S.canWrite) return;
+    const p = S.pkgs.get(S.selected);
+    if (!p) { toast("error", "Select a shipment first, then click the map to send its GPS ping."); return; }
+    const svg = $("map"), pt = svg.createSVGPoint(); pt.x = e.clientX; pt.y = e.clientY;
+    const loc = pt.matrixTransform(svg.getScreenCTM().inverse()), ll = unproj(loc.x, loc.y);
+    await sendPing(p.code, ll.lat, ll.lng);
+  }));
+
+  $("newForm").addEventListener("submit", guarded(async e => {
+    e.preventDefault();
+    const sender = $("fSender").value.trim(), recipient = $("fRecipient").value.trim();
+    const weightKg = Math.round((parseFloat($("fWeight").value) || 0) * 10) / 10;
+    if (!sender || !recipient) throw new Error("Enter a sender and a recipient.");
+    if (!(weightKg > 0)) throw new Error("Enter a weight above 0 kg.");
+    $("fSubmit").disabled = true;
+    try {
+      const code = await createShipment({ sender, recipient, destinationHub: $("fDest").value, priority: $("fPriority").value, weightKg });
+      $("fSender").value = ""; $("fRecipient").value = "";
+      S.selected = code; history.replaceState(null, "", "#" + code);
+      toast("ok", `Created ${code}. Scan it as picked up to start the trip.`);
+    } finally { $("fSubmit").disabled = false; }
+  }));
+
+  document.addEventListener("submit", guarded(async e => {
+    if (e.target.id !== "statusForm") return;
+    e.preventDefault();
+    $("dSubmit").disabled = true;
+    try { await changeStatus(S.selected, $("dTarget").value, $("dReason").value, $("dNotes").value); $("dNotes").value = ""; }
+    finally { if ($("dSubmit")) $("dSubmit").disabled = false; }
+  }));
+
+  $("actMgr").addEventListener("click", () => { S.actAs = "LOGISTICS_MANAGER"; renderChrome(); renderDetail(); });
+  $("actOpr").addEventListener("click", () => { S.actAs = "OPERATOR"; renderChrome(); renderDetail(); });
+  $("clockBtn").addEventListener("click", guarded(toggleClock));
+  $("sampleBtn").addEventListener("click", guarded(async () => { $("sampleBtn").disabled = true; try { await dispatchSamples(); } finally { $("sampleBtn").disabled = false; } }));
+  window.addEventListener("hashchange", () => { const c = location.hash.slice(1); if (c) { S.selected = c; renderManifest(); renderMap(); renderDetail(); } });
+  matchMedia("(prefers-color-scheme: dark)").addEventListener("change", renderMap);
+  new MutationObserver(renderMap).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+
+  // ------------------------------------------------------------------ boot
+  S.selected = location.hash.slice(1) || null;
+  renderAll();
+  setInterval(() => { renderLiveBits(); renderMap(); }, 1000);
+  setInterval(runAutomation, 1500);
+
+  async function boot() {
+    const use = window.claude?.use;
+    const [db, user] = use ? await Promise.all([use("db"), use("user")]) : [null, null];
+    S.loaded = true;
+    if (!db) { renderAll(); return; }
+    S.db = db; S.user = user;
+    try {
+      const [id, canEdit, canWrite] = await Promise.all([user?.id?.() ?? null, user?.canEdit?.() ?? false, user?.can?.("data.write") ?? null]);
+      S.myId = id; S.isManager = !!canEdit; S.canWrite = !!id && (canEdit || canWrite !== false);
+    } catch (_) {}
+    S.loaded = false; renderAll();
+
+    const slow = setTimeout(() => notice("error", "Can't reach the shipment data yet. Positions shown may be out of date."), 10000);
+    db.doc("config/clock").onSnapshot(snap => {
+      if (snap.exists) S.clock = { paused: false, offsetMs: 0, frozenSim: 0, ...snap.data() };
+      renderChrome();
+    }, () => {});
+    db.collection("packages").onSnapshot(snap => {
+      if (!snap.metadata.fromCache) { clearTimeout(slow); notice(null); }
+      S.pkgs = new Map(snap.docs.map(d => [d.id, d.data()]));
+      S.chain = new Map([...S.pkgs.values()].map(p => [p.code, verifyChain(p)]));
+      if (!S.selected || !S.pkgs.has(S.selected)) {
+        const first = visiblePkgs()[0]; S.selected = first ? first.code : (S.pkgs.size ? [...S.pkgs.keys()][0] : null);
+      }
+      S.loaded = true; renderAll();
+    }, err => { clearTimeout(slow); notice("error", err.code === "revoked" ? "Access to this app's data changed. Reload to continue." : "Shipment data stopped updating. Reload the page to reconnect."); });
+  }
+  boot().catch(() => { S.loaded = true; renderAll(); });
+})();
+</script>

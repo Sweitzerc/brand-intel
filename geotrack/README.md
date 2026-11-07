@@ -5,6 +5,25 @@ with FastAPI and WebSockets, and it can store data in PostgreSQL/PostGIS.
 
 ![Dashboard](screenshot.png)
 
+## Shareable version (no server)
+
+`shared-app/geotrack.html` is the same tracker rebuilt as a hosted claude.ai page:
+https://claude.ai/artifact/NKuezxbpauBPHmkKZYLvFz
+
+- Everyone with the link sees the same shipments, live. Share it from the
+  page's Share menu.
+- Roles follow claude.ai sharing. Editors are **Managers**: they can override
+  statuses, pause the simulation and dispatch sample trucks. Contributors are
+  **Operators**: they can create shipments, record custody scans and send GPS
+  pings. Viewers can only watch.
+- The trucks, geofence checks and status rules all run in the browser, and
+  every viewer computes truck positions from the same shared clock. The
+  custody hash chain uses the same recipe as the Python server, so chains made
+  by one verify in the other.
+- There's no PostGIS behind it: geofences are distance checks against the
+  circular zones. Use the Python server below when you need a real database
+  or to take pings from real devices.
+
 ## Run it
 
 ```bash
