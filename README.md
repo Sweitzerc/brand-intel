@@ -14,6 +14,9 @@ An open-source brand monitoring dashboard. Its methods come from
 [Bellingcat](https://github.com/bellingcat)'s open-source investigation tools.
 It uses free public data only and needs no API keys.
 
+> **Also in this repo:** [GeoTrack COP](geotrack/README.md), a separate logistics and package-tracking
+> server (FastAPI + PostGIS) with a live map dashboard.
+
 ## What's in the dashboard
 
 | Tab | What it does | Based on |

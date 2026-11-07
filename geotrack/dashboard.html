@@ -1,0 +1,450 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>GeoTrack COP</title>
+<style>
+  :root {
+    --bg: #f4f6f9; --panel: #ffffff; --panel-2: #eef1f5; --border: #d9dee6;
+    --text: #18202b; --muted: #5d6878; --faint: #8a94a3;
+    --accent: #2563eb; --accent-soft: rgba(37,99,235,.12);
+    --ok: #0f9d6b; --ok-soft: rgba(15,157,107,.12);
+    --warn: #b7791f; --warn-soft: rgba(183,121,31,.14);
+    --bad: #d03b3b; --bad-soft: rgba(208,59,59,.12);
+    --map-bg: #e8edf3; --map-grid: #d5dce5; --map-route: #9aa6b6;
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0b1017; --panel: #121923; --panel-2: #0e141c; --border: #233042;
+      --text: #e6ebf2; --muted: #9aa7b8; --faint: #6b788a;
+      --accent: #5b8cff; --accent-soft: rgba(91,140,255,.16);
+      --ok: #34c88f; --ok-soft: rgba(52,200,143,.14);
+      --warn: #e3a64a; --warn-soft: rgba(227,166,74,.16);
+      --bad: #f06b6b; --bad-soft: rgba(240,107,107,.14);
+      --map-bg: #0d131b; --map-grid: #18212d; --map-route: #3a475a;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 14px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  .wrap { max-width: 1280px; margin: 0 auto; padding: 16px; }
+  header { display: flex; flex-wrap: wrap; gap: 12px; align-items: center;
+           justify-content: space-between; padding-bottom: 14px; margin-bottom: 16px;
+           border-bottom: 1px solid var(--border); }
+  h1 { font-size: 20px; margin: 0; letter-spacing: -.01em; }
+  .sub { color: var(--muted); font-size: 12px; margin-top: 2px; }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .badge { font: 600 11px var(--mono); padding: 3px 8px; border-radius: 6px;
+           border: 1px solid transparent; white-space: nowrap; }
+  .b-ok { background: var(--ok-soft); color: var(--ok); border-color: var(--ok); }
+  .b-warn { background: var(--warn-soft); color: var(--warn); border-color: var(--warn); }
+  .b-bad { background: var(--bad-soft); color: var(--bad); border-color: var(--bad); }
+  .b-acc { background: var(--accent-soft); color: var(--accent); }
+  .seg { display: inline-flex; background: var(--panel); border: 1px solid var(--border);
+         border-radius: 8px; padding: 3px; }
+  .seg button { border: 0; background: none; color: var(--muted); padding: 6px 10px;
+                border-radius: 6px; font-weight: 600; font-size: 12px; cursor: pointer; }
+  .seg button.on { background: var(--accent); color: #fff; }
+  .btn { border: 1px solid var(--border); background: var(--panel); color: var(--text);
+         padding: 7px 11px; border-radius: 8px; font-weight: 600; font-size: 12px; cursor: pointer; }
+  .btn:hover { border-color: var(--accent); }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; width: 100%; }
+  .btn.okb { background: var(--ok); border-color: var(--ok); color: #fff; width: 100%; }
+  .grid { display: grid; grid-template-columns: minmax(0, 4fr) minmax(0, 8fr); gap: 16px; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 960px) { .grid, .grid2 { grid-template-columns: minmax(0, 1fr); } }
+  .stack { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+  .card { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 14px; min-width: 0; }
+  .card h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted);
+             margin: 0; }
+  .card-h { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 10px; }
+  .code { font: 11px var(--mono); color: var(--faint); }
+  label { display: block; font-size: 11px; color: var(--muted); margin-bottom: 3px; }
+  input, select { width: 100%; background: var(--panel-2); color: var(--text);
+                  border: 1px solid var(--border); border-radius: 8px; padding: 7px 9px; font: inherit; font-size: 13px; }
+  input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color: var(--accent); }
+  .f2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  form > * + * { margin-top: 9px; }
+  .banner { display: none; margin-bottom: 14px; padding: 10px 12px; border-radius: 8px;
+            border: 1px solid; font-size: 13px; justify-content: space-between; gap: 10px; }
+  .banner.show { display: flex; }
+  .banner button { background: none; border: 0; color: inherit; text-decoration: underline; cursor: pointer; }
+  .list { display: flex; flex-direction: column; gap: 8px; max-height: 420px; overflow-y: auto; }
+  .pkg { padding: 10px; border-radius: 9px; border: 1px solid var(--border); background: var(--panel-2);
+         cursor: pointer; text-align: left; width: 100%; color: inherit; font: inherit; }
+  .pkg.sel { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
+  .pkg .top { display: flex; justify-content: space-between; gap: 6px; align-items: center; }
+  .pkg .meta { display: flex; justify-content: space-between; color: var(--faint); font-size: 11px;
+               margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--border); }
+  .trunc { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .mapbox { position: relative; border-radius: 10px; overflow: hidden; border: 1px solid var(--border);
+            background: var(--map-bg); }
+  #copMap { display: block; width: 100%; aspect-ratio: 5 / 3; cursor: crosshair; }
+  .hud { margin-top: 8px; padding: 8px 10px; border-radius: 8px;
+         background: var(--panel-2); border: 1px solid var(--border);
+         font: 11px var(--mono); display: flex; flex-wrap: wrap; gap: 4px 16px; justify-content: space-between; }
+  .events { display: flex; flex-direction: column; gap: 8px; max-height: 260px; overflow-y: auto; }
+  .evt { padding: 9px; border-radius: 8px; border: 1px solid var(--border); background: var(--panel-2); font-size: 12px; }
+  .evt .h { display: flex; justify-content: space-between; gap: 8px; font: 11px var(--mono); color: var(--accent); }
+  .evt .f { display: flex; justify-content: space-between; gap: 8px; font: 10px var(--mono); color: var(--faint); margin-top: 4px; }
+  pre { background: var(--panel-2); border: 1px solid var(--border); border-radius: 8px; padding: 9px;
+        font: 11px var(--mono); overflow-x: auto; margin: 6px 0 0; color: var(--ok); }
+  .hint { font-size: 11px; color: var(--faint); }
+  .s-IN_TRANSIT, .s-OUT_FOR_DELIVERY, .s-PICKED_UP { color: var(--accent); background: var(--accent-soft); }
+  .s-DELIVERED { color: var(--ok); background: var(--ok-soft); }
+  .s-HELD_AT_HUB, .s-EXCEPTION_RETURN { color: var(--warn); background: var(--warn-soft); }
+  .s-CREATED, .s-AT_HUB { color: var(--muted); background: var(--panel); border-color: var(--border); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <div class="row">
+        <h1>GeoTrack COP</h1>
+        <span class="badge b-acc">FASTAPI + POSTGIS</span>
+        <span id="dbBadge" class="badge b-warn">STORAGE: …</span>
+        <span id="wsBadge" class="badge b-warn">WS: CONNECTING</span>
+      </div>
+      <div class="sub">Logistics &amp; telemetry command — live stream on <code>/ws/cop</code> · API docs at <a href="/docs">/docs</a></div>
+    </div>
+    <div class="row">
+      <div class="seg" role="group" aria-label="Role">
+        <button id="roleMgrBtn" class="on" onclick="setRole('LOGISTICS_MANAGER')">Manager (Dispatcher)</button>
+        <button id="roleOprBtn" onclick="setRole('OPERATOR')">Field Operator</button>
+      </div>
+      <button id="streamBtn" class="btn" onclick="toggleConfig('live_enabled')">Simulation: LIVE</button>
+      <button id="kalmanBtn" class="btn" onclick="toggleConfig('kalman_snap')">Kalman snap: ON</button>
+    </div>
+  </header>
+
+  <div id="banner" class="banner"><span id="bannerText"></span>
+    <button onclick="hideBanner()">Dismiss</button></div>
+
+  <div class="grid">
+    <div class="stack">
+      <div class="card">
+        <div class="card-h"><h2 id="ingestTitle">Manager Manifest Ingestion</h2><span class="code">POST /api/v1/shipments</span></div>
+        <form onsubmit="submitNewPackage(event)">
+          <div class="f2">
+            <div><label for="senderInput">Sender</label><input id="senderInput" required maxlength="150" placeholder="Pacific Pharma" /></div>
+            <div><label for="recipientInput">Recipient</label><input id="recipientInput" required maxlength="150" placeholder="Sector 4 Depot" /></div>
+          </div>
+          <div class="f2">
+            <div><label for="priorityInput">Priority</label>
+              <select id="priorityInput">
+                <option value="STANDARD">STANDARD</option>
+                <option value="EXPRESS" selected>EXPRESS</option>
+                <option value="CRITICAL">CRITICAL (cold chain)</option>
+              </select></div>
+            <div><label for="weightInput">Weight (kg)</label><input id="weightInput" type="number" min="0.1" step="0.1" value="15.0" /></div>
+          </div>
+          <button class="btn primary" type="submit">Ingest package &amp; mint tracking code</button>
+        </form>
+      </div>
+
+      <div class="card">
+        <div class="card-h"><h2>Active packages (<span id="pkgCount">0</span>)</h2></div>
+        <div id="pkgList" class="list"></div>
+      </div>
+    </div>
+
+    <div class="stack">
+      <div class="card">
+        <div class="card-h">
+          <h2>Common Operational Picture</h2>
+          <span class="hint">Click a marker to select · click the map to send a GPS ping for the selected package</span>
+        </div>
+        <div class="mapbox">
+          <svg id="copMap" viewBox="0 0 100 60" preserveAspectRatio="xMidYMid meet" onclick="mapClick(event)"></svg>
+        </div>
+        <div id="hud" class="hud"></div>
+      </div>
+
+      <div class="grid2">
+        <div class="card">
+          <div class="card-h"><h2>Custody control</h2><span id="currentStatusBadge" class="badge"></span></div>
+          <form onsubmit="submitCustodyUpdate(event)">
+            <div><label for="targetStatusInput">Target status <span class="hint">(allowed for this role)</span></label>
+              <select id="targetStatusInput"></select></div>
+            <div><label for="reasonInput">Reason code</label>
+              <select id="reasonInput">
+                <option value="ROUTINE_SCAN">ROUTINE_SCAN — standard handoff</option>
+                <option value="WEATHER_DELAY">WEATHER_DELAY — route exception</option>
+                <option value="VEHICLE_BREAKDOWN">VEHICLE_BREAKDOWN — carrier reassign</option>
+                <option value="CUSTOMS_INSPECTION">CUSTOMS_INSPECTION — hub hold</option>
+                <option value="DAMAGED_CARGO">DAMAGED_CARGO — return</option>
+                <option value="PROOF_OF_DELIVERY">PROOF_OF_DELIVERY — recipient signed</option>
+              </select></div>
+            <div><label for="notesInput">Notes</label><input id="notesInput" maxlength="2000" placeholder="Scan location or exception details…" /></div>
+            <button class="btn okb" type="submit" id="commitBtn">Commit signed custody event</button>
+          </form>
+        </div>
+
+        <div class="card">
+          <div class="card-h"><h2>Chain of custody</h2>
+            <button class="btn" onclick="verifyChain()" title="Recompute every SHA-256 link on the server">Verify chain</button></div>
+          <div id="eventsList" class="events"></div>
+          <div style="margin-top:10px"><span class="hint">Live telemetry payload</span><pre id="telemetryPre"></pre></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  // ----- state -----
+  let activeRole = 'LOGISTICS_MANAGER';
+  let packages = [], geofences = [], route = [], transitions = {}, overrides = [];
+  let config = {};
+  let selectedCode = null;
+  const trails = {};  // trackingCode -> [[lat,lng],...]
+
+  // ----- projection: Oahu corridor, equal km per unit on both axes -----
+  const LNG_MIN = -157.99, LNG_SPAN = 0.30, LAT_MID = 21.355;
+  const LAT_SPAN = LNG_SPAN * Math.cos(LAT_MID * Math.PI / 180) * 0.6;  // 60 / 100 aspect
+  const LAT_TOP = LAT_MID + LAT_SPAN / 2;
+  const KM_PER_UNIT = LNG_SPAN * 111.32 * Math.cos(LAT_MID * Math.PI / 180) / 100;
+  const proj = (lat, lng) => ({ x: (lng - LNG_MIN) / LNG_SPAN * 100, y: (LAT_TOP - lat) / LAT_SPAN * 60 });
+  const unproj = (x, y) => ({ lat: LAT_TOP - y / 60 * LAT_SPAN, lng: LNG_MIN + x / 100 * LNG_SPAN });
+
+  const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const hhmmss = isoTs => { const d = new Date(isoTs); return isNaN(d) ? esc(isoTs) : d.toISOString().slice(11, 19) + ' UTC'; };
+  const shortHash = h => h ? h.slice(0, 10) + '…' + h.slice(-4) : '';
+  const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+
+  // ----- banner -----
+  function showBanner(type, msg) {
+    const b = document.getElementById('banner');
+    b.className = 'banner show ' + (type === 'success' ? 'b-ok' : 'b-bad');
+    document.getElementById('bannerText').textContent = msg;
+  }
+  function hideBanner() { document.getElementById('banner').className = 'banner'; }
+
+  // ----- controls -----
+  function setRole(role) {
+    activeRole = role;
+    document.getElementById('roleMgrBtn').className = role === 'LOGISTICS_MANAGER' ? 'on' : '';
+    document.getElementById('roleOprBtn').className = role === 'OPERATOR' ? 'on' : '';
+    document.getElementById('ingestTitle').textContent =
+      role === 'LOGISTICS_MANAGER' ? 'Manager Manifest Ingestion' : 'Operator Barcode Scan';
+    renderAll();
+  }
+  async function toggleConfig(field) {
+    await fetch('/api/v1/config/toggle?field=' + field, { method: 'POST' });
+  }
+  function allowedTargets(status) {
+    if (status === 'DELIVERED') return [];
+    const s = new Set(transitions[status] || []);
+    if (activeRole === 'LOGISTICS_MANAGER') overrides.forEach(t => s.add(t));
+    s.delete(status);
+    return [...s];
+  }
+  function select(code) { selectedCode = code; renderAll(); }
+
+  // ----- render -----
+  function renderAll() {
+    const sel = packages.find(p => p.trackingCode === selectedCode) || packages[0];
+    if (sel) selectedCode = sel.trackingCode;
+
+    document.getElementById('pkgCount').textContent = packages.length;
+    document.getElementById('streamBtn').textContent = config.live_enabled ? 'Simulation: LIVE (2s)' : 'Simulation: PAUSED';
+    document.getElementById('kalmanBtn').textContent = config.kalman_snap ? 'Kalman snap: ON' : 'Raw GPS: noisy';
+    const db = document.getElementById('dbBadge');
+    if (config.storage_engine === 'POSTGRESQL_POSTGIS_LIVE') { db.textContent = 'POSTGIS: CONNECTED'; db.className = 'badge b-ok'; }
+    else { db.textContent = 'IN-MEMORY (set DATABASE_URL)'; db.className = 'badge b-warn'; }
+
+    // package list
+    document.getElementById('pkgList').innerHTML = packages.map(p => `
+      <button class="pkg ${p.trackingCode === selectedCode ? 'sel' : ''}" onclick="select('${esc(p.trackingCode)}')">
+        <div class="top"><b style="font-family:var(--mono);font-size:12px">${esc(p.trackingCode)}</b>
+          <span class="badge s-${esc(p.status)}">${esc(p.status)}</span></div>
+        <div class="trunc" style="font-size:12px;margin-top:3px">${esc(p.sender)} → <b>${esc(p.recipient)}</b></div>
+        <div class="meta"><span>${esc(p.vehicleId)} · ${esc(p.priority)}</span>
+          <span>${esc(p.speedKph)} kph · ETA ${esc(p.etaMinutes)}m · ${esc(p.routeProgressPct)}%</span></div>
+      </button>`).join('') || '<div class="hint">No packages yet.</div>';
+
+    renderMap(sel);
+    if (!sel) return;
+
+    // HUD
+    const fences = (sel.currentGeofences || []).join(', ') || 'none';
+    document.getElementById('hud').innerHTML = `
+      <span><b style="color:var(--accent)">${esc(sel.trackingCode)}</b> · LAT ${sel.coordinates.lat.toFixed(5)} · LNG ${sel.coordinates.lng.toFixed(5)}</span>
+      <span>${esc(sel.speedKph)} kph @ ${esc(sel.headingDeg)}° · BAT ${esc(sel.batteryPct)}% · ${esc(sel.networkType)}</span>
+      <span>Geofences: ${esc(fences)}</span>`;
+
+    const badge = document.getElementById('currentStatusBadge');
+    badge.textContent = sel.status; badge.className = 'badge s-' + sel.status;
+
+    // target status options
+    const targets = allowedTargets(sel.status);
+    const tsel = document.getElementById('targetStatusInput');
+    const prev = tsel.value;
+    tsel.innerHTML = targets.map(t => `<option value="${t}">${t}</option>`).join('') ||
+      '<option value="">— locked —</option>';
+    if (targets.includes(prev)) tsel.value = prev;
+    document.getElementById('commitBtn').disabled = targets.length === 0;
+
+    // events
+    document.getElementById('eventsList').innerHTML = sel.events.map(e => `
+      <div class="evt">
+        <div class="h"><span>${esc(e.eventType)} (${esc(e.reasonCode)})</span><span>${hhmmss(e.timestamp)}</span></div>
+        <div style="margin-top:2px">${esc(e.previousStatus || 'NONE')} → <b style="color:var(--ok)">${esc(e.newStatus)}</b></div>
+        <div style="color:var(--muted);font-size:11px;margin-top:2px">${esc(e.notes)}</div>
+        <div class="f"><span>${esc(e.actor)} · ${esc(e.role)}</span><span title="${esc(e.hash)}">${shortHash(e.hash)}</span></div>
+      </div>`).join('');
+
+    document.getElementById('telemetryPre').textContent = JSON.stringify({
+      device_id: sel.vehicleId, package_id: sel.trackingCode, storage_engine: config.storage_engine,
+      timestamp_utc: sel.lastPingUtc, coordinates: sel.coordinates,
+      kinematics: { speed_kph: sel.speedKph, heading_deg: sel.headingDeg },
+      geofences: sel.currentGeofences, kalman_snapped: config.kalman_snap
+    }, null, 2);
+  }
+
+  function renderMap(sel) {
+    const grid = css('--map-grid'), routeC = css('--map-route'), acc = css('--accent'),
+          ok = css('--ok'), warn = css('--warn'), muted = css('--muted'), text = css('--text');
+    let s = '';
+    for (let x = 10; x < 100; x += 10) s += `<line x1="${x}" y1="0" x2="${x}" y2="60" stroke="${grid}" stroke-width="0.15"/>`;
+    for (let y = 10; y < 60; y += 10) s += `<line x1="0" y1="${y}" x2="100" y2="${y}" stroke="${grid}" stroke-width="0.15"/>`;
+    // scale bar: 5 km
+    const sb = 5 / KM_PER_UNIT;
+    s += `<line x1="3" y1="3" x2="${3 + sb}" y2="3" stroke="${muted}" stroke-width="0.4"/>
+          <text x="3" y="5.6" fill="${muted}" font-size="1.8">5 km</text>`;
+    if (route.length) {
+      s += `<polyline points="${route.map(w => { const p = proj(w.lat, w.lng); return p.x + ',' + p.y; }).join(' ')}"
+             fill="none" stroke="${routeC}" stroke-width="0.6" stroke-dasharray="1.6 1"/>`;
+    }
+    geofences.forEach(h => {
+      const p = proj(h.lat, h.lng), r = h.radius_km / KM_PER_UNIT;
+      const c = h.type === 'CUSTOMER_DELIVERY_ZONE' ? ok : acc;
+      s += `<circle cx="${p.x}" cy="${p.y}" r="${r}" fill="${c}" fill-opacity="0.08" stroke="${c}" stroke-opacity="0.6" stroke-width="0.25" stroke-dasharray="0.8 0.5"/>
+            <circle cx="${p.x}" cy="${p.y}" r="0.6" fill="${c}"/>
+            <text x="${p.x}" y="${p.y + r + 2.4}" text-anchor="middle" fill="${muted}" font-size="1.9">${esc(h.code)}</text>`;
+    });
+    packages.forEach(pkg => {
+      const t = trails[pkg.trackingCode] || [];
+      if (t.length > 1) {
+        s += `<polyline points="${t.map(([la, ln]) => { const p = proj(la, ln); return p.x + ',' + p.y; }).join(' ')}"
+               fill="none" stroke="${acc}" stroke-opacity="0.35" stroke-width="0.35"/>`;
+      }
+    });
+    packages.forEach(pkg => {
+      const p = proj(pkg.coordinates.lat, pkg.coordinates.lng);
+      const color = pkg.status === 'DELIVERED' ? ok : (['HELD_AT_HUB', 'EXCEPTION_RETURN'].includes(pkg.status) ? warn : acc);
+      const isSel = sel && pkg.trackingCode === sel.trackingCode;
+      s += `<g style="cursor:pointer" onclick="event.stopPropagation(); select('${esc(pkg.trackingCode)}')">
+        ${isSel ? `<circle cx="${p.x}" cy="${p.y}" r="2.6" fill="none" stroke="${color}" stroke-width="0.3"/>` : ''}
+        <circle cx="${p.x}" cy="${p.y}" r="1.3" fill="${color}" stroke="${css('--panel')}" stroke-width="0.3"/>
+        <text x="${p.x}" y="${p.y - 2.4}" text-anchor="middle" fill="${text}" font-size="1.9" font-weight="700">${esc(pkg.trackingCode)}</text>
+      </g>`;
+    });
+    document.getElementById('copMap').innerHTML = s;
+  }
+
+  // ----- actions -----
+  async function postJSON(url, body) {
+    const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    let data = {}; try { data = await res.json(); } catch (_) {}
+    return { res, data };
+  }
+  const detail = d => typeof d.detail === 'string' ? d.detail : (d.detail ? d.detail.map(x => x.msg).join('; ') : 'Request failed');
+
+  async function submitNewPackage(e) {
+    e.preventDefault();
+    const { res, data } = await postJSON('/api/v1/shipments', {
+      sender: document.getElementById('senderInput').value,
+      recipient: document.getElementById('recipientInput').value,
+      priority: document.getElementById('priorityInput').value,
+      weight_kg: parseFloat(document.getElementById('weightInput').value) || 10.0,
+      actor_role: activeRole
+    });
+    if (res.ok) {
+      selectedCode = data.package.trackingCode;
+      document.getElementById('senderInput').value = '';
+      document.getElementById('recipientInput').value = '';
+      showBanner('success', `Ingested ${data.package.trackingCode} (${config.storage_engine}).`);
+    } else showBanner('error', detail(data));
+  }
+
+  async function submitCustodyUpdate(e) {
+    e.preventDefault();
+    if (!selectedCode) return;
+    const { res, data } = await postJSON(`/api/v1/shipments/${encodeURIComponent(selectedCode)}/events`, {
+      actor_role: activeRole,
+      new_status: document.getElementById('targetStatusInput').value,
+      reason_code: document.getElementById('reasonInput').value,
+      notes: document.getElementById('notesInput').value
+    });
+    if (res.ok) { document.getElementById('notesInput').value = ''; showBanner('success', `Custody updated for ${selectedCode} → ${data.package.status}.`); }
+    else showBanner('error', detail(data));
+  }
+
+  async function verifyChain() {
+    if (!selectedCode) return;
+    const res = await fetch(`/api/v1/shipments/${encodeURIComponent(selectedCode)}/verify`);
+    const d = await res.json();
+    if (d.valid) showBanner('success', `${selectedCode}: all ${d.eventCount} custody hashes verify (head ${shortHash(d.headHash)}).`);
+    else showBanner('error', `${selectedCode}: chain BROKEN at event ${d.brokenAtEventId}.`);
+  }
+
+  async function mapClick(e) {
+    const sel = packages.find(p => p.trackingCode === selectedCode);
+    if (!sel) return;
+    const svg = document.getElementById('copMap');
+    const pt = svg.createSVGPoint(); pt.x = e.clientX; pt.y = e.clientY;
+    const loc = pt.matrixTransform(svg.getScreenCTM().inverse());
+    const { lat, lng } = unproj(loc.x, loc.y);
+    const { res, data } = await postJSON('/api/v1/telemetry/ping', {
+      device_id: sel.vehicleId, package_ids: [sel.trackingCode],
+      coordinates: { lat, lng, altitude_m: 12, accuracy_m: 5 },
+      speed_kph: sel.speedKph, heading_deg: sel.headingDeg || 0,
+      battery_pct: sel.batteryPct, network_type: sel.networkType
+    });
+    if (res.ok) {
+      const g = data.geofences_intersected.length ? data.geofences_intersected.join(', ') : 'no geofence';
+      showBanner('success', `GPS ping for ${sel.trackingCode} at ${lat.toFixed(4)}, ${lng.toFixed(4)} → ${g}. Simulator yields to this device for 30s.`);
+    } else showBanner('error', detail(data));
+  }
+
+  // ----- live updates: WebSocket, falling back to HTTP polling -----
+  let wsOpen = false, failures = 0, pollTimer = null;
+  async function poll() {
+    if (wsOpen) return;
+    try { const r = await fetch('/api/v1/state'); if (r.ok) applySnapshot(await r.json()); } catch (_) {}
+  }
+  function connect() {
+    const ws = new WebSocket((location.protocol === 'https:' ? 'wss:' : 'ws:') + '//' + location.host + '/ws/cop');
+    const wsb = document.getElementById('wsBadge');
+    ws.onopen = () => {
+      wsOpen = true; failures = 0; wsb.textContent = 'WS: LIVE'; wsb.className = 'badge b-ok';
+      if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+    };
+    ws.onclose = () => {
+      wsOpen = false; failures++;
+      if (failures >= 2 && !pollTimer) { pollTimer = setInterval(poll, 2000); poll(); }
+      wsb.textContent = pollTimer ? 'WS DOWN: POLLING' : 'WS: RECONNECTING'; wsb.className = 'badge b-warn';
+      setTimeout(connect, Math.min(30000, 2000 * failures));
+    };
+    ws.onmessage = ev => { const msg = JSON.parse(ev.data); if (msg.type === 'COP_SNAPSHOT') applySnapshot(msg); };
+  }
+  function applySnapshot(msg) {
+      packages = msg.packages; geofences = msg.geofences; route = msg.route;
+      transitions = msg.transitions; overrides = msg.managerOverrides; config = msg.config;
+      packages.forEach(p => {
+        const t = trails[p.trackingCode] || (trails[p.trackingCode] = []);
+        const last = t[t.length - 1];
+        if (!last || last[0] !== p.coordinates.lat || last[1] !== p.coordinates.lng) t.push([p.coordinates.lat, p.coordinates.lng]);
+        if (t.length > 60) t.shift();
+      });
+      renderAll();
+  }
+  matchMedia('(prefers-color-scheme: dark)').addEventListener('change', renderAll);
+  connect();
+</script>
+</body>
+</html>

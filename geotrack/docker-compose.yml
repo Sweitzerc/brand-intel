@@ -1,0 +1,21 @@
+# Local PostGIS for GeoTrack COP.
+#   docker compose -f geotrack/docker-compose.yml up -d
+#   export DATABASE_URL="postgresql://postgres:password@localhost:5432/logistics_db"
+services:
+  postgis:
+    image: postgis/postgis:16-3.4
+    container_name: geotrack-postgis
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password   # local development only
+      POSTGRES_DB: logistics_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - geotrack-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d logistics_db"]
+      interval: 5s
+      retries: 10
+volumes:
+  geotrack-pgdata:
